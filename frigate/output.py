@@ -50,7 +50,7 @@ class FFMpegConverter:
                 "-i",
                 "pipe:",
                 "-c:v",
-                rtsp_encoder,
+                rtsp_encoder[1],
                 "-rtsp_transport",
                 "tcp",
                 "-f",
