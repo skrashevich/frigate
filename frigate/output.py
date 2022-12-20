@@ -49,18 +49,14 @@ class FFMpegConverter:
                 f"{in_width}x{in_height}",
                 "-i",
                 "pipe:",
-                "-avoid_negative_ts",
-                "make_zero",
-                "-c:v",
             ]
             ffmpeg_cmd.extend(rtsp_encoding_args)
             ffmpeg_cmd.extend(
                 [
-                    "-an",
-                    "-r",
-                    "10",
                     "-rtsp_transport",
                     "tcp",
+                    "-r",
+                    "10",
                     "-f",
                     "rtsp",
                     "rtsp://localhost:8554/birdseye",
