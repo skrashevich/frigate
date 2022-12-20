@@ -36,10 +36,10 @@ class FFMpegConverter:
         out_width: int,
         out_height: int,
         quality: int,
-        rtsp_encoder: str = None,
+        rtsp_encoding_args: list[str] = None,
     ):
-        ffmpeg_cmd = (
-            [
+        if rtsp_encoding_args:
+            ffmpeg_cmd = [
                 "ffmpeg",
                 "-f",
                 "rawvideo",
@@ -50,41 +50,46 @@ class FFMpegConverter:
                 "-i",
                 "pipe:",
                 "-c:v",
-                rtsp_encoder,
-                "-an",
-                "-avoid_negative_ts",
-                "make_zero",
-                "-rtsp_transport",
-                "tcp",
-                "-r",
-                "10",
-                "-g",
-                "50",
-                "-profile:v",
-                "high",
-                "-level:v",
-                "4.1",
-                "-preset:v",
-                "superfast",
-                "-tune:v",
-                "zerolatency",
-                "-f",
-                "rtsp",
-                "rtsp://localhost:8554/birdseye",
-                "-f",
-                "mpegts",
-                "-s",
-                f"{out_width}x{out_height}",
-                "-codec:v",
-                "mpeg1video",
-                "-q",
-                f"{quality}",
-                "-bf",
-                "0",
-                "pipe:",
             ]
-            if rtsp_encoder
-            else [
+            ffmpeg_cmd.extend(rtsp_encoding_args)
+            ffmpeg_cmd.extend(
+                [
+                    "-an",
+                    "-avoid_negative_ts",
+                    "make_zero",
+                    "-rtsp_transport",
+                    "tcp",
+                    "-r",
+                    "10",
+                    "-g",
+                    "50",
+                    "-profile:v",
+                    "high",
+                    "-level:v",
+                    "4.1",
+                    "-preset:v",
+                    "superfast",
+                    "-tune:v",
+                    "zerolatency",
+                    "-f",
+                    "rtsp",
+                    "rtsp://localhost:8554/birdseye",
+                    "-f",
+                    "mpegts",
+                    "-s",
+                    f"{out_width}x{out_height}",
+                    "-codec:v",
+                    "mpeg1video",
+                    "-q",
+                    f"{quality}",
+                    "-bf",
+                    "0",
+                    "pipe:",
+                ]
+            )
+
+        else:
+            ffmpeg_cmd = [
                 "ffmpeg",
                 "-f",
                 "rawvideo",
@@ -106,7 +111,6 @@ class FFMpegConverter:
                 "0",
                 "pipe:",
             ]
-        )
 
         self.process = sp.Popen(
             ffmpeg_cmd,
@@ -464,7 +468,7 @@ def output_frames(config: FrigateConfig, video_output_queue):
             config.birdseye.quality,
             parse_preset_hardware_acceleration(
                 config.ffmpeg.hwaccel_args, HwAccelTypeEnum.encode
-            )[1]
+            )
             if config.restream.birdseye
             else None,
         )

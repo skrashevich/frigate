@@ -42,13 +42,77 @@ PRESETS_HW_ACCEL_DECODE = {
     "preset-nvidia-mjpeg": ["-c:v", "mjpeg_cuvid"],
 }
 
+PRESET_DEFAULT_ENCODE = [
+    "-c:v",
+    "libx264",
+    "-g",
+    "50",
+    "-profile:v",
+    "high",
+    "-level:v",
+    "4.1",
+    "-preset:v",
+    "superfast",
+    "-tune:v",
+    "zerolatency",
+]
+
 PRESETS_HW_ACCEL_ENCODE = {
-    "preset-intel-vaapi": ["-c:v", "h264_vaapi"],
+    "preset-rpi-64-h264": ["-c:v", "h264_v4l2m2m", "-g", "50", "-bf", "0"],
+    "preset-intel-vaapi": [
+        "-c:v",
+        "h264_vaapi",
+        "-g",
+        "50",
+        "-bf",
+        "0",
+        "-profile:v",
+        "high",
+        "-level:v",
+        "4.1",
+        "-sei:v",
+        "0",
+    ],
     "preset-intel-qsv-h264": ["-c:v", "h264_qsv"],
     "preset-intel-qsv-h265": ["-c:v", "hevc_qsv"],
-    "preset-amd-vaapi": ["-c:v", "h264_vaapi"],
-    "preset-nvidia-h264": ["-c:v", "h264_nvenc"],
-    "preset-nvidia-h265": ["-c:v", "hevc_nvenc"],
+    "preset-amd-vaapi": [
+        "-c:v",
+        "h264_vaapi",
+        "-g",
+        "50",
+        "-bf",
+        "0",
+        "-profile:v",
+        "high",
+        "-level:v",
+        "4.1",
+        "-sei:v",
+        "0",
+    ],
+    "preset-nvidia-h264": [
+        "-c:v",
+        "h264_nvenc",
+        "-g",
+        "50",
+        "-profile:v",
+        "high",
+        "-level:v",
+        "auto",
+        "-preset:v",
+        "p2",
+        "-tune:v",
+        "ll",
+    ],
+    "preset-nvidia-h265": [
+        "-c:v",
+        "hevc_nvenc",
+        "-g",
+        "50",
+        "-profile:v",
+        "high",
+        "-level:v",
+        "auto",
+    ],
 }
 
 
@@ -58,12 +122,12 @@ def parse_preset_hardware_acceleration(
     """Return the correct preset if in preset format otherwise return None."""
     if not isinstance(arg, str):
         if type is HwAccelTypeEnum.encode:
-            return ["-c:v", "libx264"]
-            
+            return PRESET_DEFAULT_ENCODE
+
         return None
 
     if type is HwAccelTypeEnum.encode:
-        return PRESETS_HW_ACCEL_ENCODE.get(arg, ["-c:v", "libx264"])
+        return PRESETS_HW_ACCEL_ENCODE.get(arg, PRESET_DEFAULT_ENCODE)
 
     return PRESETS_HW_ACCEL_DECODE.get(arg, None)
 
