@@ -56,6 +56,8 @@ class FFMpegConverter:
                 "make_zero",
                 "-rtsp_transport",
                 "tcp",
+                "-r",
+                "10",
                 "-f",
                 "rtsp",
                 "rtsp://localhost:8554/birdseye",
@@ -490,24 +492,30 @@ def output_frames(config: FrigateConfig, video_output_queue):
             # write to the converter for the camera if clients are listening to the specific camera
             converters[camera].write(frame.tobytes())
 
-        # update birdseye if websockets are connected
-        # or if birdseye rtsp restream is enabled
-        run_converter = (
-            any(
+        if config.birdseye.enabled:
+            # always update if birdseye rtsp restream is enabled
+            if config.restream.birdseye:
+                birdseye_manager.update(
+                    camera,
+                    len([o for o in current_tracked_objects if not o["stationary"]]),
+                    len(motion_boxes),
+                    frame_time,
+                    frame,
+                )
+                converters["birdseye"].write(birdseye_manager.frame.tobytes())
+            # update birdseye if websockets are connected
+            elif any(
                 ws.environ["PATH_INFO"].endswith("birdseye")
                 for ws in websocket_server.manager
-            )
-            or config.restream.birdseye
-        )
-        if config.birdseye.enabled and run_converter:
-            if birdseye_manager.update(
-                camera,
-                len([o for o in current_tracked_objects if not o["stationary"]]),
-                len(motion_boxes),
-                frame_time,
-                frame,
             ):
-                converters["birdseye"].write(birdseye_manager.frame.tobytes())
+                if birdseye_manager.update(
+                    camera,
+                    len([o for o in current_tracked_objects if not o["stationary"]]),
+                    len(motion_boxes),
+                    frame_time,
+                    frame,
+                ):
+                    converters["birdseye"].write(birdseye_manager.frame.tobytes())
 
         if camera in previous_frames:
             frame_manager.delete(f"{camera}{previous_frames[camera]}")
