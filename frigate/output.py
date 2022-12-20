@@ -52,6 +52,8 @@ class FFMpegConverter:
                 "-c:v",
                 rtsp_encoder,
                 "-an",
+                "-avoid_negative_ts",
+                "make_zero",
                 "-rtsp_transport",
                 "tcp",
                 "-f",
