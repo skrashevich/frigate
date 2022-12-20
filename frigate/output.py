@@ -50,7 +50,8 @@ class FFMpegConverter:
                 "-i",
                 "pipe:",
                 "-c:v",
-                rtsp_encoder[1],
+                rtsp_encoder,
+                "-an",
                 "-rtsp_transport",
                 "tcp",
                 "-f",
@@ -449,7 +450,7 @@ def output_frames(config: FrigateConfig, video_output_queue):
             config.birdseye.quality,
             parse_preset_hardware_acceleration(
                 config.ffmpeg.hwaccel_args, HwAccelTypeEnum.encode
-            )
+            )[1]
             if config.restream.birdseye
             else None,
         )

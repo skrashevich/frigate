@@ -57,9 +57,12 @@ def parse_preset_hardware_acceleration(
 ) -> list[str]:
     """Return the correct preset if in preset format otherwise return None."""
     if not isinstance(arg, str):
+        if type is HwAccelTypeEnum.encode:
+            return ["-c:v", "libx264"]
+            
         return None
 
-    if type == HwAccelTypeEnum.encode:
+    if type is HwAccelTypeEnum.encode:
         return PRESETS_HW_ACCEL_ENCODE.get(arg, ["-c:v", "libx264"])
 
     return PRESETS_HW_ACCEL_DECODE.get(arg, None)
