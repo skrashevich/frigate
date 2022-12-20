@@ -22,16 +22,77 @@ from ws4py.websocket import WebSocket
 
 from frigate.config import BirdseyeModeEnum, FrigateConfig
 from frigate.const import BASE_DIR
+from frigate.ffmpeg_presets import HwAccelTypeEnum, parse_preset_hardware_acceleration
 from frigate.util import SharedMemoryFrameManager, copy_yuv_to_position, get_yuv_crop
 
 logger = logging.getLogger(__name__)
 
 
 class FFMpegConverter:
-    def __init__(self, in_width, in_height, out_width, out_height, quality):
-        ffmpeg_cmd = f"ffmpeg -f rawvideo -pix_fmt yuv420p -video_size {in_width}x{in_height} -i pipe: -f mpegts -s {out_width}x{out_height} -codec:v mpeg1video -q {quality} -bf 0 pipe:".split(
-            " "
+    def __init__(
+        self,
+        in_width: int,
+        in_height: int,
+        out_width: int,
+        out_height: int,
+        quality: int,
+        rtsp_encoder: str = None,
+    ):
+        ffmpeg_cmd = (
+            [
+                "ffmpeg",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "yuv420p",
+                "-video_size",
+                f"{in_width}x{in_height}",
+                "-i",
+                "pipe:",
+                "-c:v",
+                rtsp_encoder,
+                "-rtsp_transport",
+                "tcp",
+                "-f",
+                "rtsp",
+                "rtsp://localhost:8554/birdseye",
+                "-f",
+                "mpegts",
+                "-s",
+                f"{out_width}x{out_height}",
+                "-codec:v",
+                "mpeg1video",
+                "-q",
+                f"{quality}",
+                "-bf",
+                "0",
+                "pipe:",
+            ]
+            if rtsp_encoder
+            else [
+                "ffmpeg",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "yuv420p",
+                "-video_size",
+                f"{in_width}x{in_height}",
+                "-i",
+                "pipe:",
+                "-f",
+                "mpegts",
+                "-s",
+                f"{out_width}x{out_height}",
+                "-codec:v",
+                "mpeg1video",
+                "-q",
+                f"{quality}",
+                "-bf",
+                "0",
+                "pipe:",
+            ]
         )
+
         self.process = sp.Popen(
             ffmpeg_cmd,
             stdout=sp.PIPE,
@@ -386,6 +447,11 @@ def output_frames(config: FrigateConfig, video_output_queue):
             config.birdseye.width,
             config.birdseye.height,
             config.birdseye.quality,
+            parse_preset_hardware_acceleration(
+                config.ffmpeg.hwaccel_args, HwAccelTypeEnum.encode
+            )
+            if config.restream.birdseye
+            else None,
         )
         broadcasters["birdseye"] = BroadcastThread(
             "birdseye", converters["birdseye"], websocket_server
@@ -422,10 +488,15 @@ def output_frames(config: FrigateConfig, video_output_queue):
             converters[camera].write(frame.tobytes())
 
         # update birdseye if websockets are connected
-        if config.birdseye.enabled and any(
-            ws.environ["PATH_INFO"].endswith("birdseye")
-            for ws in websocket_server.manager
-        ):
+        # or if birdseye rtsp restream is enabled
+        run_converter = (
+            any(
+                ws.environ["PATH_INFO"].endswith("birdseye")
+                for ws in websocket_server.manager
+            )
+            or config.restream.birdseye
+        )
+        if config.birdseye.enabled and run_converter:
             if birdseye_manager.update(
                 camera,
                 len([o for o in current_tracked_objects if not o["stationary"]]),

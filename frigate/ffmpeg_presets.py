@@ -1,5 +1,6 @@
 """Handles inserting and maintaining ffmpeg presets."""
 
+from enum import Enum
 from typing import Any
 
 from frigate.version import VERSION
@@ -9,7 +10,13 @@ _user_agent_args = [
     f"FFmpeg Frigate/{VERSION}",
 ]
 
-PRESETS_HW_ACCEL = {
+
+class HwAccelTypeEnum(str, Enum):
+    decode = "decode"
+    encode = "encode"
+
+
+PRESETS_HW_ACCEL_DECODE = {
     "preset-rpi-32-h264": ["-c:v", "h264_v4l2m2m"],
     "preset-rpi-64-h264": ["-c:v", "h264_v4l2m2m"],
     "preset-intel-vaapi": [
@@ -35,13 +42,27 @@ PRESETS_HW_ACCEL = {
     "preset-nvidia-mjpeg": ["-c:v", "mjpeg_cuvid"],
 }
 
+PRESETS_HW_ACCEL_ENCODE = {
+    "preset-intel-vaapi": ["-c:v", "h264_vaapi"],
+    "preset-intel-qsv-h264": ["-c:v", "h264_qsv"],
+    "preset-intel-qsv-h265": ["-c:v", "hevc_qsv"],
+    "preset-amd-vaapi": ["-c:v", "h264_vaapi"],
+    "preset-nvidia-h264": ["-c:v", "h264_nvenc"],
+    "preset-nvidia-h265": ["-c:v", "hevc_nvenc"],
+}
 
-def parse_preset_hardware_acceleration(arg: Any) -> list[str]:
+
+def parse_preset_hardware_acceleration(
+    arg: Any, type: HwAccelTypeEnum = HwAccelTypeEnum.decode
+) -> list[str]:
     """Return the correct preset if in preset format otherwise return None."""
     if not isinstance(arg, str):
         return None
 
-    return PRESETS_HW_ACCEL.get(arg, None)
+    if type == HwAccelTypeEnum.encode:
+        return PRESETS_HW_ACCEL_ENCODE.get(arg, ["-c:v", "libx264"])
+
+    return PRESETS_HW_ACCEL_DECODE.get(arg, None)
 
 
 PRESETS_INPUT = {
