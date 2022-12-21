@@ -1,6 +1,5 @@
 """Handles inserting and maintaining ffmpeg presets."""
 
-from enum import Enum
 from typing import Any
 
 from frigate.version import VERSION
@@ -10,14 +9,7 @@ _user_agent_args = [
     f"FFmpeg Frigate/{VERSION}",
 ]
 
-
-class HwAccelTypeEnum(str, Enum):
-    decode = "decode"
-    encode_mp4 = "encode_mp4"
-    encode_rtsp = "encode_rtsp"
-
-
-PRESETS_HW_ACCEL_DECODE = {
+PRESETS_HW_ACCEL = {
     "preset-rpi-32-h264": ["-c:v", "h264_v4l2m2m"],
     "preset-rpi-64-h264": ["-c:v", "h264_v4l2m2m"],
     "preset-intel-vaapi": [
@@ -43,91 +35,13 @@ PRESETS_HW_ACCEL_DECODE = {
     "preset-nvidia-mjpeg": ["-c:v", "mjpeg_cuvid"],
 }
 
-PRESETS_HW_ACCEL_ENCODE_TO_MP4 = {
-    "default": [
-        "-c:v",
-        "libx264",
-    ],
-    "preset-rpi-64-h264": ["-c:v", "h264_v4l2m2m"],
-    "preset-intel-vaapi": [
-        "-c:v",
-        "h264_vaapi",
-    ],
-    "preset-intel-qsv-h264": ["-c:v", "h264_qsv"],
-    "preset-intel-qsv-h265": ["-c:v", "hevc_qsv"],
-    "preset-nvidia-h264": [
-        "-c:v",
-        "h264_nvenc",
-    ],
-}
 
-PRESETS_HW_ACCEL_ENCODE_TO_RTSP = {
-    "default": [
-        "-c:v",
-        "libx264",
-        "-g",
-        "50",
-        "-profile:v",
-        "high",
-        "-level:v",
-        "4.1",
-        "-preset:v",
-        "superfast",
-        "-tune:v",
-        "zerolatency",
-    ],
-    "preset-rpi-64-h264": ["-c:v", "h264_v4l2m2m", "-g", "50", "-bf", "0"],
-    "preset-intel-vaapi": [
-        "-c:v",
-        "h264_vaapi",
-        "-g",
-        "50",
-        "-bf",
-        "0",
-        "-profile:v",
-        "high",
-        "-level:v",
-        "4.1",
-    ],
-    "preset-intel-qsv-h264": ["-c:v", "h264_qsv"],
-    "preset-intel-qsv-h265": ["-c:v", "hevc_qsv"],
-    "preset-nvidia-h264": [
-        "-c:v",
-        "h264_nvenc",
-        "-g",
-        "50",
-        "-profile:v",
-        "high",
-        "-level:v",
-        "auto",
-        "-preset:v",
-        "p2",
-        "-tune:v",
-        "ll",
-    ],
-}
-
-
-def parse_preset_hardware_acceleration(
-    arg: Any, type: HwAccelTypeEnum = HwAccelTypeEnum.decode
-) -> list[str]:
+def parse_preset_hardware_acceleration(arg: Any) -> list[str]:
     """Return the correct preset if in preset format otherwise return None."""
     if not isinstance(arg, str):
-        if type is HwAccelTypeEnum.encode_rtsp:
-            return PRESETS_HW_ACCEL_ENCODE_TO_MP4["default"]
-
-        if type is HwAccelTypeEnum.encode_rtsp:
-            return PRESETS_HW_ACCEL_ENCODE_TO_RTSP["default"]
-
         return None
 
-    if type is HwAccelTypeEnum.encode_mp4:
-        return PRESETS_HW_ACCEL_ENCODE_TO_MP4.get(arg, PRESETS_HW_ACCEL_ENCODE_TO_MP4["default"])
-
-    if type is HwAccelTypeEnum.encode_rtsp:
-        return PRESETS_HW_ACCEL_ENCODE_TO_RTSP.get(arg, PRESETS_HW_ACCEL_ENCODE_TO_RTSP["default"])
-
-    return PRESETS_HW_ACCEL_DECODE.get(arg, None)
+    return PRESETS_HW_ACCEL.get(arg, None)
 
 
 PRESETS_INPUT = {
