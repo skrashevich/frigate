@@ -51,8 +51,6 @@ class FFMpegConverter:
                 f"{in_width}x{in_height}",
                 "-i",
                 "pipe:",
-                "-vf",
-                "scale_vaapi=1080:720",
             ]
             ffmpeg_cmd.extend(rtsp_encoding_args)
             ffmpeg_cmd.extend(

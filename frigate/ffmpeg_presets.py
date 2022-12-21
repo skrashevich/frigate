@@ -14,6 +14,7 @@ _user_agent_args = [
 class HwAccelTypeEnum(str, Enum):
     decode = "decode"
     encode = "encode"
+    encode_birdseye = "encode_birdseye"
 
 
 PRESETS_HW_ACCEL_DECODE = {
@@ -42,22 +43,39 @@ PRESETS_HW_ACCEL_DECODE = {
     "preset-nvidia-mjpeg": ["-c:v", "mjpeg_cuvid"],
 }
 
-PRESET_DEFAULT_ENCODE = [
-    "-c:v",
-    "libx264",
-    "-g",
-    "50",
-    "-profile:v",
-    "high",
-    "-level:v",
-    "4.1",
-    "-preset:v",
-    "superfast",
-    "-tune:v",
-    "zerolatency",
-]
+PRESETS_HW_ACCEL_ENCODE_TO_MP4 = {
+    "default": [
+        "-c:v",
+        "libx264",
+    ],
+    "preset-rpi-64-h264": ["-c:v", "h264_v4l2m2m"],
+    "preset-intel-vaapi": [
+        "-c:v",
+        "h264_vaapi",
+    ],
+    "preset-intel-qsv-h264": ["-c:v", "h264_qsv"],
+    "preset-intel-qsv-h265": ["-c:v", "hevc_qsv"],
+    "preset-nvidia-h264": [
+        "-c:v",
+        "h264_nvenc",
+    ],
+}
 
-PRESETS_HW_ACCEL_ENCODE = {
+PRESETS_HW_ACCEL_ENCODE_TO_RTSP = {
+    "default": [
+        "-c:v",
+        "libx264",
+        "-g",
+        "50",
+        "-profile:v",
+        "high",
+        "-level:v",
+        "4.1",
+        "-preset:v",
+        "superfast",
+        "-tune:v",
+        "zerolatency",
+    ],
     "preset-rpi-64-h264": ["-c:v", "h264_v4l2m2m", "-g", "50", "-bf", "0"],
     "preset-intel-vaapi": [
         "-c:v",
@@ -73,18 +91,6 @@ PRESETS_HW_ACCEL_ENCODE = {
     ],
     "preset-intel-qsv-h264": ["-c:v", "h264_qsv"],
     "preset-intel-qsv-h265": ["-c:v", "hevc_qsv"],
-    "preset-amd-vaapi": [
-        "-c:v",
-        "h264_vaapi",
-        "-g",
-        "50",
-        "-bf",
-        "0",
-        "-profile:v",
-        "high",
-        "-level:v",
-        "4.1",
-    ],
     "preset-nvidia-h264": [
         "-c:v",
         "h264_nvenc",
@@ -99,16 +105,6 @@ PRESETS_HW_ACCEL_ENCODE = {
         "-tune:v",
         "ll",
     ],
-    "preset-nvidia-h265": [
-        "-c:v",
-        "hevc_nvenc",
-        "-g",
-        "50",
-        "-profile:v",
-        "high",
-        "-level:v",
-        "auto",
-    ],
 }
 
 
@@ -118,12 +114,18 @@ def parse_preset_hardware_acceleration(
     """Return the correct preset if in preset format otherwise return None."""
     if not isinstance(arg, str):
         if type is HwAccelTypeEnum.encode:
-            return PRESET_DEFAULT_ENCODE
+            return PRESETS_HW_ACCEL_ENCODE_TO_MP4["default"]
+
+        if type is HwAccelTypeEnum.encode_birdseye:
+            return PRESETS_HW_ACCEL_ENCODE_TO_RTSP["default"]
 
         return None
 
     if type is HwAccelTypeEnum.encode:
-        return PRESETS_HW_ACCEL_ENCODE.get(arg, PRESET_DEFAULT_ENCODE)
+        return PRESETS_HW_ACCEL_ENCODE_TO_MP4.get(arg, PRESETS_HW_ACCEL_ENCODE_TO_MP4["default"])
+
+    if type is HwAccelTypeEnum.encode_birdseye:
+        return PRESETS_HW_ACCEL_ENCODE_TO_RTSP.get(arg, PRESETS_HW_ACCEL_ENCODE_TO_RTSP["default"])
 
     return PRESETS_HW_ACCEL_DECODE.get(arg, None)
 
