@@ -51,6 +51,8 @@ class FFMpegConverter:
                 f"{in_width}x{in_height}",
                 "-i",
                 "pipe:",
+                "-vf",
+                "'format=yuv420p,hwupload'",
             ]
             ffmpeg_cmd.extend(rtsp_encoding_args)
             ffmpeg_cmd.extend(
