@@ -52,7 +52,7 @@ class FFMpegConverter:
                 "-i",
                 "pipe:",
                 "-vf",
-                "'format=yuv420p,hwupload'",
+                "scale_vaapi=1080:720",
             ]
             ffmpeg_cmd.extend(rtsp_encoding_args)
             ffmpeg_cmd.extend(
