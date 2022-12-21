@@ -74,10 +74,6 @@ PRESETS_HW_ACCEL_ENCODE = {
     "preset-amd-vaapi": [
         "-c:v",
         "h264_vaapi",
-        "-g",
-        "50",
-        "-bf",
-        "0",
     ],
     "preset-nvidia-h264": [
         "-c:v",
