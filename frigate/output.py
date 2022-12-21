@@ -486,9 +486,12 @@ def output_frames(config: FrigateConfig, video_output_queue):
             # write to the converter for the camera if clients are listening to the specific camera
             converters[camera].write(frame.tobytes())
 
-        if config.birdseye.enabled or any(
-            ws.environ["PATH_INFO"].endswith("birdseye")
-            for ws in websocket_server.manager
+        if config.birdseye.enabled and (
+            config.restream.birdseye
+            or any(
+                ws.environ["PATH_INFO"].endswith("birdseye")
+                for ws in websocket_server.manager
+            )
         ):
             if birdseye_manager.update(
                 camera,
