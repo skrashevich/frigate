@@ -23,6 +23,7 @@ from ws4py.websocket import WebSocket
 from frigate.config import BirdseyeModeEnum, FrigateConfig
 from frigate.const import BASE_DIR
 from frigate.ffmpeg_presets import HwAccelTypeEnum, parse_preset_hardware_acceleration
+from frigate.log import LogPipe
 from frigate.util import SharedMemoryFrameManager, copy_yuv_to_position, get_yuv_crop
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ class FFMpegConverter:
         quality: int,
         rtsp_encoding_args: list[str] = None,
     ):
+        self.logpipe = LogPipe("frigate.converter")
         if rtsp_encoding_args:
             ffmpeg_cmd = [
                 "ffmpeg",
@@ -101,13 +103,17 @@ class FFMpegConverter:
         self.process = sp.Popen(
             ffmpeg_cmd,
             stdout=sp.PIPE,
-            stderr=sp.DEVNULL,
+            stderr=self.logpipe,
             stdin=sp.PIPE,
             start_new_session=True,
         )
 
     def write(self, b):
-        self.process.stdin.write(b)
+        try:
+            self.process.stdin.write(b)
+        except Exception:
+            self.logpipe.dump()
+            self.logpipe.close()
 
     def read(self, length):
         try:
