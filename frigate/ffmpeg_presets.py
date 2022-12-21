@@ -13,8 +13,8 @@ _user_agent_args = [
 
 class HwAccelTypeEnum(str, Enum):
     decode = "decode"
-    encode = "encode"
-    encode_birdseye = "encode_birdseye"
+    encode_mp4 = "encode_mp4"
+    encode_rtsp = "encode_rtsp"
 
 
 PRESETS_HW_ACCEL_DECODE = {
@@ -113,18 +113,18 @@ def parse_preset_hardware_acceleration(
 ) -> list[str]:
     """Return the correct preset if in preset format otherwise return None."""
     if not isinstance(arg, str):
-        if type is HwAccelTypeEnum.encode:
+        if type is HwAccelTypeEnum.encode_rtsp:
             return PRESETS_HW_ACCEL_ENCODE_TO_MP4["default"]
 
-        if type is HwAccelTypeEnum.encode_birdseye:
+        if type is HwAccelTypeEnum.encode_rtsp:
             return PRESETS_HW_ACCEL_ENCODE_TO_RTSP["default"]
 
         return None
 
-    if type is HwAccelTypeEnum.encode:
+    if type is HwAccelTypeEnum.encode_mp4:
         return PRESETS_HW_ACCEL_ENCODE_TO_MP4.get(arg, PRESETS_HW_ACCEL_ENCODE_TO_MP4["default"])
 
-    if type is HwAccelTypeEnum.encode_birdseye:
+    if type is HwAccelTypeEnum.encode_rtsp:
         return PRESETS_HW_ACCEL_ENCODE_TO_RTSP.get(arg, PRESETS_HW_ACCEL_ENCODE_TO_RTSP["default"])
 
     return PRESETS_HW_ACCEL_DECODE.get(arg, None)

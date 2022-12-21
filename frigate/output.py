@@ -460,7 +460,7 @@ def output_frames(config: FrigateConfig, video_output_queue):
             config.birdseye.height,
             config.birdseye.quality,
             parse_preset_hardware_acceleration(
-                config.ffmpeg.hwaccel_args, HwAccelTypeEnum.encode
+                config.ffmpeg.hwaccel_args, HwAccelTypeEnum.encode_rtsp
             )
             if config.restream.birdseye
             else None,
