@@ -59,6 +59,7 @@ class FFMpegConverter:
                     "tcp",
                     "-r",
                     "10",
+                    "-an",
                     "-f",
                     "rtsp",
                     "rtsp://localhost:8554/birdseye",
