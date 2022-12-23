@@ -2,7 +2,6 @@
 
 # https://askubuntu.com/questions/972516/debian-frontend-environment-variable
 ARG DEBIAN_FRONTEND=noninteractive
-ARG BUILDPLATFORM
 
 FROM debian:11 AS base
 #RUN sed -i -e 's/deb.debian.org/mirror.yandex.ru/g' /etc/apt/sources.list
