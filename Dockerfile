@@ -6,8 +6,6 @@ ARG DEBIAN_FRONTEND=noninteractive
 FROM debian:11 AS base
 #RUN sed -i -e 's/deb.debian.org/mirror.yandex.ru/g' /etc/apt/sources.list
 
-FROM --platform=linux/amd64 base AS base_amd64
-
 FROM debian:11-slim AS slim-base
 
 FROM slim-base AS wget
@@ -67,7 +65,7 @@ RUN make -j$(nproc) && make install
 RUN rm -rf /usr/local/nginx/html /usr/local/nginx/conf/*.default
 
 # Download and Convert OpenVino model
-FROM base_amd64 AS ov-converter
+FROM --platform=$BUILDPLATFORM base AS ov-converter
 ARG DEBIAN_FRONTEND
 
 # Install OpenVino Runtime and Dev library
@@ -112,7 +110,7 @@ RUN /bin/mkdir -p '/usr/local/lib' && \
 
 
 
-FROM wget AS models
+FROM --platform=$BUILDPLATFORM wget AS models
 
 # Get model and labels
 RUN wget -qO edgetpu_model.tflite https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess_edgetpu.tflite
