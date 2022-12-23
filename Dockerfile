@@ -205,7 +205,7 @@ RUN --mount=type=bind,from=wheels,source=/wheels,target=/deps/wheels \
 COPY --from=deps-rootfs / /
 #ADD --link docker/ffmpeg /usr/lib/btbn-ffmpeg/bin/ffmpeg
 #ADD --link docker/ffprobe /usr/lib/btbn-ffmpeg/bin/ffprobe
-COPY --from=skrashevich/ffmpeg:linux64-nonfree-shared /app /usr/lib/btbn-ffmpeg
+COPY --from=ghcr.io/skrashevich/ffmpeg-builds:linux64-nonfree-shared /app /usr/lib/btbn-ffmpeg
 RUN chmod +x /usr/lib/btbn-ffmpeg/bin/ff*
 
 RUN ldconfig
