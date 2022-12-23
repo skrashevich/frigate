@@ -13,7 +13,7 @@ local: version
 	docker buildx build --tag frigate:latest --load .
 
 amd64:
-	docker buildx build --platform linux/amd64 --tag $(IMAGE_REPO):$(VERSION)-$(COMMIT_HASH) .
+	docker buildx build --push --platform linux/amd64 --tag $(IMAGE_REPO):$(VERSION)-$(COMMIT_HASH) --tag $(IMAGE_REPO):$(VERSION)-latest .
 
 arm64:
 	docker buildx build --platform linux/arm64 --tag $(IMAGE_REPO):$(VERSION)-$(COMMIT_HASH) .

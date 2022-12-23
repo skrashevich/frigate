@@ -8,6 +8,7 @@ apt-get -qq install --no-install-recommends -y \
     apt-transport-https \
     gnupg \
     wget \
+    git \
     procps vainfo \
     unzip locales tzdata libxml2 xz-utils \
     python3-pip
@@ -38,9 +39,12 @@ if [[ "${TARGETARCH}" == "amd64" || "${TARGETARCH}" == "arm64" ]]; then
         btbn_arch="arm64"
     fi
     mkdir -p /usr/lib/btbn-ffmpeg
-    wget -qO btbn-ffmpeg.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2022-07-31-12-37/ffmpeg-n5.1-2-g915ef932a3-linux${btbn_arch}-gpl-5.1.tar.xz"
-    tar -xf btbn-ffmpeg.tar.xz -C /usr/lib/btbn-ffmpeg --strip-components 1
-    rm -rf btbn-ffmpeg.tar.xz /usr/lib/btbn-ffmpeg/doc /usr/lib/btbn-ffmpeg/bin/ffplay
+   
+
+#    wget -qO btbn-ffmpeg.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n5.1-latest-linux64-nonfree-5.1.tar.xz"
+#    tar -xf artifacts/*nonfree*.xz -C /usr/lib/btbn-ffmpeg --strip-components 1
+#    cd ..
+#    rm -rf FFmpeg-Builds /usr/lib/btbn-ffmpeg/doc /usr/lib/btbn-ffmpeg/bin/ffplay
 fi
 
 # ffmpeg -> arm32
