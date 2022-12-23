@@ -63,63 +63,8 @@ RUN ./configure --prefix=/usr/local/nginx \
     --add-module=../nginx-rtmp-module \
     --with-cc-opt="-O3 -Wno-error=implicit-fallthrough"
 
-RUN make && make install
+RUN make -j$(nproc) && make install
 RUN rm -rf /usr/local/nginx/html /usr/local/nginx/conf/*.default
-
-FROM ubuntu:20.04 AS nginx
-ARG DEBIAN_FRONTEND
-ARG NGINX_VERSION=1.22.1
-ARG VOD_MODULE_VERSION=1.30
-ARG SECURE_TOKEN_MODULE_VERSION=1.4
-ARG RTMP_MODULE_VERSION=1.2.1
-
-RUN cp /etc/apt/sources.list /etc/apt/sources.list~ \
-    && sed -Ei 's/^# deb-src /deb-src /' /etc/apt/sources.list \
-    && apt-get update
-
-RUN apt-get -yqq build-dep nginx
-
-RUN apt-get -yqq install --no-install-recommends ca-certificates wget \
-    && mkdir /tmp/nginx \
-    && wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
-    && tar -zxf nginx-${NGINX_VERSION}.tar.gz -C /tmp/nginx --strip-components=1 \
-    && rm nginx-${NGINX_VERSION}.tar.gz \
-    && mkdir /tmp/nginx-vod-module \
-    && wget https://github.com/kaltura/nginx-vod-module/archive/refs/tags/${VOD_MODULE_VERSION}.tar.gz \
-    && tar -zxf ${VOD_MODULE_VERSION}.tar.gz -C /tmp/nginx-vod-module --strip-components=1 \
-    && rm ${VOD_MODULE_VERSION}.tar.gz \
-    # Patch MAX_CLIPS to allow more clips to be added than the default 128
-    && sed -i 's/MAX_CLIPS (128)/MAX_CLIPS (1080)/g' /tmp/nginx-vod-module/vod/media_set.h \
-    && mkdir /tmp/nginx-secure-token-module \
-    && wget https://github.com/kaltura/nginx-secure-token-module/archive/refs/tags/${SECURE_TOKEN_MODULE_VERSION}.tar.gz \
-    && tar -zxf ${SECURE_TOKEN_MODULE_VERSION}.tar.gz -C /tmp/nginx-secure-token-module --strip-components=1 \
-    && rm ${SECURE_TOKEN_MODULE_VERSION}.tar.gz \
-    && mkdir /tmp/nginx-rtmp-module \
-    && wget https://github.com/arut/nginx-rtmp-module/archive/refs/tags/v${RTMP_MODULE_VERSION}.tar.gz \
-    && tar -zxf v${RTMP_MODULE_VERSION}.tar.gz -C /tmp/nginx-rtmp-module --strip-components=1 \
-    && rm v${RTMP_MODULE_VERSION}.tar.gz
-
-WORKDIR /tmp/nginx
-
-RUN ./configure --prefix=/usr/local/nginx \
-    --with-file-aio \
-    --with-http_sub_module \
-    --with-http_ssl_module \
-    --with-threads \
-    --add-module=../nginx-vod-module \
-    --add-module=../nginx-secure-token-module \
-    --add-module=../nginx-rtmp-module \
-    --with-cc-opt="-O3 -Wno-error=implicit-fallthrough"
-
-RUN make && make install
-RUN rm -rf /usr/local/nginx/html /usr/local/nginx/conf/*.default
-
-
-FROM wget AS go2rtc
-ARG TARGETARCH
-WORKDIR /rootfs/usr/local/go2rtc/bin
-RUN wget -qO go2rtc "https://github.com/AlexxIT/go2rtc/releases/download/v0.1-rc.5/go2rtc_linux_${TARGETARCH}" \
-    && chmod +x go2rtc
 
 # Download and Convert OpenVino model
 FROM base_amd64 AS ov-converter
@@ -230,7 +175,7 @@ RUN pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
 # Collect deps in a single layer
 FROM scratch AS deps-rootfs
 COPY --from=nginx /usr/local/nginx/ /usr/local/nginx/
-COPY --from=registry.svk.app/skrashevich/go2rtc /usr/local/bin/go2rtc /usr/local/go2rtc/bin/go2rtc
+COPY --from=skrashevich/go2rtc:nvidia-docker /usr/local/bin/go2rtc /usr/local/go2rtc/bin/go2rtc
 COPY --from=libusb-build /usr/local/lib /usr/local/lib
 COPY --from=s6-overlay /rootfs/ /
 COPY --from=models /rootfs/ /
@@ -260,7 +205,7 @@ RUN --mount=type=bind,from=wheels,source=/wheels,target=/deps/wheels \
 COPY --from=deps-rootfs / /
 #ADD --link docker/ffmpeg /usr/lib/btbn-ffmpeg/bin/ffmpeg
 #ADD --link docker/ffprobe /usr/lib/btbn-ffmpeg/bin/ffprobe
-COPY --from=registry.svk.app/skrashevich/ffmpeg:linux64-nonfree-shared /app /usr/lib/btbn-ffmpeg
+COPY --from=skrashevich/ffmpeg:linux64-nonfree-shared /app /usr/lib/btbn-ffmpeg
 RUN chmod +x /usr/lib/btbn-ffmpeg/bin/ff*
 
 RUN ldconfig
