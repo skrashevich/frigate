@@ -3,6 +3,10 @@ on: [push]
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [amd64,arm64]
     steps:
     - uses: actions/checkout@v3
     - name: Set up Docker Buildx
@@ -27,8 +31,8 @@ jobs:
       with:
         context: .
         push: true
-        platforms: linux/amd64,linux/arm64,linux/arm/v7
+        platforms: linux/${{ matrix.target }}
         tags: |
-          skrashevich/frigate:${{ github.ref_name }}-${{ env.SHORT_SHA }}
+          ${{ secrets.DOCKER_USERNAME }}/frigate:${{ github.ref_name }}-${{ env.SHORT_SHA }}-${{ matrix.target }}
         cache-from: type=gha
         cache-to: type=gha,mode=max

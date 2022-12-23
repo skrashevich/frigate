@@ -2,9 +2,12 @@
 
 # https://askubuntu.com/questions/972516/debian-frontend-environment-variable
 ARG DEBIAN_FRONTEND=noninteractive
+ARG BUILDPLATFORM
 
 FROM debian:11 AS base
 #RUN sed -i -e 's/deb.debian.org/mirror.yandex.ru/g' /etc/apt/sources.list
+
+FROM --platform=linux/amd64 debian:11 AS base_amd64
 
 FROM debian:11-slim AS slim-base
 
@@ -65,7 +68,7 @@ RUN make -j$(nproc) && make install
 RUN rm -rf /usr/local/nginx/html /usr/local/nginx/conf/*.default
 
 # Download and Convert OpenVino model
-FROM --platform=$BUILDPLATFORM base AS ov-converter
+FROM base_amd64 AS ov-converter
 ARG DEBIAN_FRONTEND
 
 # Install OpenVino Runtime and Dev library
