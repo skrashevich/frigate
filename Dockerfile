@@ -13,7 +13,7 @@ FROM debian:11-slim AS slim-base
 FROM slim-base AS wget
 ARG DEBIAN_FRONTEND
 RUN apt-get update \
-    && apt-get install -y wget xz-utils \
+    && apt-get install -y --no-install-recommends wget xz-utils \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /rootfs
 
@@ -33,11 +33,11 @@ RUN apt-get -yqq build-dep nginx
 RUN apt-get -yqq install --no-install-recommends ca-certificates wget \
     && update-ca-certificates -f \
     && mkdir /tmp/nginx \
-    && wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
+    && wget -nv https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
     && tar -zxf nginx-${NGINX_VERSION}.tar.gz -C /tmp/nginx --strip-components=1 \
     && rm nginx-${NGINX_VERSION}.tar.gz \
     && mkdir /tmp/nginx-vod-module \
-    && wget https://github.com/kaltura/nginx-vod-module/archive/refs/tags/${VOD_MODULE_VERSION}.tar.gz \
+    && wget -nv https://github.com/kaltura/nginx-vod-module/archive/refs/tags/${VOD_MODULE_VERSION}.tar.gz \
     && tar -zxf ${VOD_MODULE_VERSION}.tar.gz -C /tmp/nginx-vod-module --strip-components=1 \
     && rm ${VOD_MODULE_VERSION}.tar.gz \
     # Patch MAX_CLIPS to allow more clips to be added than the default 128
@@ -47,7 +47,7 @@ RUN apt-get -yqq install --no-install-recommends ca-certificates wget \
     && tar -zxf ${SECURE_TOKEN_MODULE_VERSION}.tar.gz -C /tmp/nginx-secure-token-module --strip-components=1 \
     && rm ${SECURE_TOKEN_MODULE_VERSION}.tar.gz \
     && mkdir /tmp/nginx-rtmp-module \
-    && wget https://github.com/arut/nginx-rtmp-module/archive/refs/tags/v${RTMP_MODULE_VERSION}.tar.gz \
+    && wget -nv https://github.com/arut/nginx-rtmp-module/archive/refs/tags/v${RTMP_MODULE_VERSION}.tar.gz \
     && tar -zxf v${RTMP_MODULE_VERSION}.tar.gz -C /tmp/nginx-rtmp-module --strip-components=1 \
     && rm v${RTMP_MODULE_VERSION}.tar.gz
 
@@ -73,7 +73,7 @@ ARG DEBIAN_FRONTEND
 # Install OpenVino Runtime and Dev library
 COPY requirements-ov.txt /requirements-ov.txt
 RUN apt-get -qq update \
-    && apt-get -qq install -y wget python3 python3-distutils \
+    && apt-get -qq install -y --no-install-recommends wget python3 python3-distutils \
     && wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip" \
     && pip install -r /requirements-ov.txt
@@ -91,7 +91,7 @@ ARG DEBIAN_FRONTEND
 
 # Build libUSB without udev.  Needed for Openvino NCS2 support
 WORKDIR /opt
-RUN apt-get update && apt-get install -y unzip build-essential automake libtool
+RUN apt-get update && apt-get install -y --no-install-recommends unzip build-essential automake libtool
 RUN wget -q https://github.com/libusb/libusb/archive/v1.0.25.zip -O v1.0.25.zip && \
     unzip v1.0.25.zip && cd libusb-1.0.25 && \
     ./bootstrap.sh && \
@@ -136,14 +136,14 @@ ARG TARGETARCH
 
 # Use a separate container to build wheels to prevent build dependencies in final image
 RUN apt-get -qq update \
-    && apt-get -qq install -y \
+    && apt-get -qq install -y --no-install-recommends \
     apt-transport-https \
     gnupg \
     wget \
     && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 9165938D90FDDD2E \
     && echo "deb http://raspbian.raspberrypi.org/raspbian/ bullseye main contrib non-free rpi" | tee /etc/apt/sources.list.d/raspi.list \
     && apt-get -qq update \
-    && apt-get -qq install -y \
+    && apt-get -qq install -y --no-install-recommends \
     python3 \
     python3-dev \
     wget \
@@ -242,16 +242,16 @@ COPY docker/fake_frigate_run /etc/services.d/frigate/run
 
 # Install Node 16
 RUN apt-get update \
-    && apt-get install wget -y \
+    && apt-get install --no-install-recommends wget -y \
     && wget -qO- https://deb.nodesource.com/setup_16.x | bash - \
-    && apt-get install -y nodejs \
+    && apt-get install -y --no-install-recommends nodejs  \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g npm@9
 
 WORKDIR /workspace/frigate
 
 RUN apt-get update \
-    && apt-get install make -y \
+    && apt-get install --no-install-recommends make -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN --mount=type=bind,source=./requirements-dev.txt,target=/workspace/frigate/requirements-dev.txt \
