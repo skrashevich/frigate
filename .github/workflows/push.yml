@@ -5,7 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        targets: [frigate, frigate-tensorrt]
+        target: [frigate, frigate-tensorrt]
     steps:
     - uses: actions/checkout@v3
     - name: Set up Docker Buildx
