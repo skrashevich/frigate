@@ -155,7 +155,8 @@ RUN apt-get -qq update \
     libtbb2 libtbb-dev libdc1394-22-dev libopenexr-dev \
     libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev \
     # scipy dependencies
-    gcc gfortran libopenblas-dev liblapack-dev
+    gcc gfortran libopenblas-dev liblapack-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip"
@@ -170,6 +171,10 @@ RUN pip3 install -r requirements.txt
 
 COPY requirements-wheels.txt /requirements-wheels.txt
 RUN pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
+
+# Add TensorRT wheels to another folder
+COPY requirements-tensorrt.txt /requirements-tensorrt.txt
+RUN mkdir -p /trt-wheels && pip3 wheel --wheel-dir=/trt-wheels -r requirements-tensorrt.txt
 
 
 # Collect deps in a single layer
@@ -282,7 +287,18 @@ COPY migrations migrations/
 COPY --from=web-build /work/dist/ web/
 
 # Frigate final container
-FROM deps
+FROM deps AS frigate
 
 WORKDIR /opt/frigate/
 COPY --from=rootfs / /
+
+# Frigate w/ TensorRT Support as separate image
+FROM frigate AS frigate-tensorrt
+RUN --mount=type=bind,from=wheels,source=/trt-wheels,target=/deps/trt-wheels \
+    pip3 install -U /deps/trt-wheels/*.whl
+
+# Dev Container w/ TRT
+FROM devcontainer AS devcontainer-trt
+
+RUN --mount=type=bind,from=wheels,source=/trt-wheels,target=/deps/trt-wheels \
+    pip3 install -U /deps/trt-wheels/*.whl
