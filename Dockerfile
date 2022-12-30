@@ -13,8 +13,9 @@ FROM debian:11-slim AS slim-base
 FROM slim-base AS wget
 ARG DEBIAN_FRONTEND
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends wget xz-utils aria2 \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get -y upgrade --no-install-recommends && apt-get install -y --no-install-recommends ca-certificates wget xz-utils \
+    && apt-get clean
+RUN update-ca-certificates
 WORKDIR /rootfs
 
 FROM base AS nginx
