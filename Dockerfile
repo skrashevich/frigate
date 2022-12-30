@@ -13,7 +13,7 @@ FROM debian:11-slim AS slim-base
 FROM slim-base AS wget
 ARG DEBIAN_FRONTEND
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends wget xz-utils \
+    && apt-get install -y --no-install-recommends wget xz-utils aria2 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /rootfs
 
@@ -99,7 +99,7 @@ RUN wget -q https://github.com/libusb/libusb/archive/v1.0.25.zip -O v1.0.25.zip 
     make -j $(nproc --all)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends libusb-1.0-0-dev && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get clean
 WORKDIR /opt/libusb-1.0.25/libusb
 RUN /bin/mkdir -p '/usr/local/lib' && \
     /bin/bash ../libtool  --mode=install /usr/bin/install -c libusb-1.0.la '/usr/local/lib' && \
@@ -112,15 +112,15 @@ RUN /bin/mkdir -p '/usr/local/lib' && \
 
 
 
-FROM --platform=$BUILDPLATFORM wget AS models
+FROM wget AS models
 
 # Get model and labels
-RUN wget -qO edgetpu_model.tflite https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess_edgetpu.tflite
-RUN wget -qO cpu_model.tflite https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess.tflite
+ADD https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess_edgetpu.tflite edgetpu_model.tflite
+ADD https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess.tflite cpu_model.tflite 
 COPY labelmap.txt .
 # Copy OpenVino model
 COPY --from=ov-converter /models/public/ssdlite_mobilenet_v2/FP16 openvino-model
-RUN wget -q https://github.com/openvinotoolkit/open_model_zoo/raw/master/data/dataset_classes/coco_91cl_bkgr.txt -O openvino-model/coco_91cl_bkgr.txt
+ADD https://github.com/openvinotoolkit/open_model_zoo/raw/master/data/dataset_classes/coco_91cl_bkgr.txt openvino-model/coco_91cl_bkgr.txt
 
 
 
@@ -156,7 +156,7 @@ RUN apt-get -qq update \
     libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev \
     # scipy dependencies
     gcc gfortran libopenblas-dev liblapack-dev && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get clean
 
 RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip"
@@ -267,7 +267,7 @@ CMD ["sleep", "infinity"]
 
 # Frigate web build
 # force this to run on amd64 because QEMU is painfully slow
-FROM --platform=linux/amd64 node:16 AS web-build
+FROM --platform=$BUILDPLATFORM node:16 AS web-build
 
 WORKDIR /work
 COPY web/package.json web/package-lock.json ./
@@ -277,6 +277,7 @@ COPY web/ ./
 RUN npm run build \
     && mv dist/BASE_PATH/monacoeditorwork/* dist/assets/ \
     && rm -rf dist/BASE_PATH
+RUN wget https://gobinaries.com/tj/node-prune --output-document - | /bin/sh && node-prune
 
 # Collect final files in a single layer
 FROM scratch AS rootfs
