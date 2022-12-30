@@ -3,6 +3,9 @@ on: [push]
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        targets: [frigate, frigate-tensorrt]
     steps:
     - uses: actions/checkout@v3
     - name: Set up Docker Buildx
@@ -29,7 +32,8 @@ jobs:
         push: true
         platforms: linux/amd64,linux/arm64,linux/arm/v7
         tags: |
-          ${{ secrets.DOCKER_USERNAME }}/frigate:${{ github.ref_name }}-${{ env.SHORT_SHA }}
-          ${{ secrets.DOCKER_USERNAME }}/frigate:${{ github.ref_name }}
+          ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ github.ref_name }}-${{ env.SHORT_SHA }}
+          ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ github.ref_name }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        target: ${{ matrix.target }}
