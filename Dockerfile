@@ -72,7 +72,7 @@ FROM base_amd64 AS ov-converter
 ARG DEBIAN_FRONTEND
 
 # Install OpenVino Runtime and Dev library
-COPY requirements-ov.txt /requirements-ov.txt
+ADD requirements-ov.txt /requirements-ov.txt
 RUN apt-get -qq update \
     && apt-get -qq install -y --no-install-recommends wget python3 python3-distutils \
     && wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \

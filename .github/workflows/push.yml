@@ -9,7 +9,7 @@ jobs:
         target: [frigate, frigate-tensorrt]
         include:
           - target: frigate
-            platform: "linux/amd64,linux/arm64,linux/arm/v7"
+            platform: linux/amd64,linux/arm64,linux/arm/v7
           - target: frigate-tensorrt
             platform: linux/amd64
     steps:
@@ -40,6 +40,4 @@ jobs:
         tags: |
           ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ github.ref_name }}-${{ env.SHORT_SHA }}
           ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ github.ref_name }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
         target: ${{ matrix.target }}
