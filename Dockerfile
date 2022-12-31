@@ -4,18 +4,30 @@
 ARG DEBIAN_FRONTEND=noninteractive
 
 FROM debian:11 AS base
-#RUN sed -i -e 's/deb.debian.org/mirror.yandex.ru/g' /etc/apt/sources.list
+ARG DEBIAN_FRONTEND
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get clean
+RUN update-ca-certificates
 
 FROM --platform=linux/amd64 debian:11 AS base_amd64
+ARG DEBIAN_FRONTEND
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get clean
+RUN update-ca-certificates
 
 FROM debian:11-slim AS slim-base
+ARG DEBIAN_FRONTEND
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get clean
+RUN update-ca-certificates
 
 FROM slim-base AS wget
 ARG DEBIAN_FRONTEND
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates wget xz-utils \
+RUN apt-get install -y --no-install-recommends wget xz-utils \
     && apt-get clean
-RUN update-ca-certificates
 WORKDIR /rootfs
 
 FROM base AS nginx
