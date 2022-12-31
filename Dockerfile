@@ -74,7 +74,7 @@ ARG DEBIAN_FRONTEND
 # Install OpenVino Runtime and Dev library
 ADD requirements-ov.txt /requirements-ov.txt
 RUN apt-get -qq update \
-    && apt-get -qq install -y --no-install-recommends wget python3 python3-distutils \
+    && apt-get -qq install -y wget python3 python3-distutils \
     && wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip" \
     && pip install -r /requirements-ov.txt
