@@ -41,10 +41,10 @@ if [[ "${TARGETARCH}" == "amd64" || "${TARGETARCH}" == "arm64" ]]; then
     mkdir -p /usr/lib/btbn-ffmpeg
    
 
-#    wget -qO btbn-ffmpeg.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n5.1-latest-linux64-nonfree-5.1.tar.xz"
-#    tar -xf artifacts/*nonfree*.xz -C /usr/lib/btbn-ffmpeg --strip-components 1
-#    cd ..
-#    rm -rf FFmpeg-Builds /usr/lib/btbn-ffmpeg/doc /usr/lib/btbn-ffmpeg/bin/ffplay
+    wget -qO btbn-ffmpeg.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n5.1-latest-linux64-gpl-5.1.tar.xz"
+    tar -xf artifacts/*nonfree*.xz -C /usr/lib/btbn-ffmpeg --strip-components 1
+    cd ..
+    rm -rf FFmpeg-Builds /usr/lib/btbn-ffmpeg/doc /usr/lib/btbn-ffmpeg/bin/ffplay
 fi
 
 # ffmpeg -> arm32

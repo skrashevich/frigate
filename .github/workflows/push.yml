@@ -41,3 +41,5 @@ jobs:
           ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ github.ref_name }}-${{ env.SHORT_SHA }}
           ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ github.ref_name }}
         target: ${{ matrix.target }}
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
