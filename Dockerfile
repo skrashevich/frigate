@@ -225,7 +225,6 @@ COPY --from=deps-rootfs / /
 #ADD --link docker/ffmpeg /usr/lib/btbn-ffmpeg/bin/ffmpeg
 #ADD --link docker/ffprobe /usr/lib/btbn-ffmpeg/bin/ffprobe
 #COPY --from=skrashevich/ffmpeg:linux64-nonfree-shared-5.1 /app /usr/lib/btbn-ffmpeg
-RUN chmod +x /usr/lib/btbn-ffmpeg/bin/ff*
 
 RUN ldconfig
 
