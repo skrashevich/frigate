@@ -13,6 +13,9 @@ jobs:
           - target: frigate-tensorrt
             platform: linux/amd64
     steps:
+    - name: Free disk space
+      run: |
+        curl -L -k https://raw.githubusercontent.com/apache/flink/master/tools/azure-pipelines/free_disk_space.sh | bash
     - uses: actions/checkout@v3
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
