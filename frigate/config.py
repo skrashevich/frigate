@@ -66,7 +66,7 @@ class UIConfig(FrigateBaseModel):
 
 class MqttConfig(FrigateBaseModel):
     enabled: bool = Field(title="Enable MQTT Communication.", default=True)
-    host: str = Field(title="MQTT Host")
+    host: str = Field(default="", title="MQTT Host")
     port: int = Field(default=1883, title="MQTT Port")
     topic_prefix: str = Field(default="frigate", title="MQTT Topic Prefix")
     client_id: str = Field(default="frigate", title="MQTT Client ID")
@@ -514,8 +514,17 @@ class JsmpegStreamConfig(FrigateBaseModel):
     quality: int = Field(default=8, ge=1, le=31, title="Live camera view quality.")
 
 
+class RestreamCodecEnum(str, Enum):
+    copy = "copy"
+    h264 = "h264"
+    h265 = "h265"
+
+
 class RestreamConfig(FrigateBaseModel):
     enabled: bool = Field(default=True, title="Restreaming enabled.")
+    video_encoding: RestreamCodecEnum = Field(
+        default=RestreamCodecEnum.copy, title="Method for encoding the restream."
+    )
     force_audio: bool = Field(
         default=True, title="Force audio compatibility with the browser."
     )
