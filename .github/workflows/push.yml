@@ -7,9 +7,12 @@ jobs:
       fail-fast: false
       matrix:
         target: [frigate, frigate-tensorrt]
+        platform: ["linux/amd64,linux/arm64", "linux/arm/v7"]
+        tag: [""]
         include:
           - target: frigate
-            platform: linux/amd64,linux/arm64,linux/arm/v7
+            platform: "linux/arm/v7"
+            tag: armv7
           - target: frigate-tensorrt
             platform: linux/amd64
     steps:
@@ -41,8 +44,8 @@ jobs:
         push: true
         platforms: ${{ matrix.platform }}
         tags: |
-          ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ github.ref_name }}-${{ env.SHORT_SHA }}
-          ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ github.ref_name }}
+          ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ matrix.tag }}${{ github.ref_name }}-${{ env.SHORT_SHA }}
+          ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ matrix.tag }}${{ github.ref_name }}
         target: ${{ matrix.target }}
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
