@@ -38,6 +38,14 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=tmpfs,target=/var/cache/apt \
     --mount=type=bind,source=docker/build_nginx.sh,target=/deps/build_nginx.sh \
     /deps/build_nginx.sh
 
+####
+#
+# OpenVino Support
+#
+# 1. Download and convert a model from Intel's Public Open Model Zoo
+# 2. Build libUSB without udev to handle NCS2 enumeration
+#
+####
 # Download and Convert OpenVino model
 FROM base_amd64 AS ov-converter
 ARG DEBIAN_FRONTEND
