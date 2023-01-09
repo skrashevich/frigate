@@ -60,7 +60,7 @@ ARG DEBIAN_FRONTEND
 
 # Install OpenVino Runtime and Dev library
 ADD requirements-ov.txt /requirements-ov.txt
-RUN apt-get -qq update \
+RUN --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages --mount=type=cache,target=/root/.cache/pip apt-get -qq update \
     && apt-get -qq install -y wget python3 python3-distutils \
     && wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip" \
@@ -124,7 +124,7 @@ ARG DEBIAN_FRONTEND
 ARG TARGETARCH
 
 # Use a separate container to build wheels to prevent build dependencies in final image
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked apt-get -qq update \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,target=/root/.cache/pip --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages apt-get -qq update \
     && apt-get -qq install -y --no-install-recommends \
     apt-transport-https \
     gnupg \
@@ -147,7 +147,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked apt-get -qq update \
     gcc gfortran libopenblas-dev liblapack-dev && \
     apt-get clean
 
-RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
+RUN --mount=type=cache,target=/root/.cache/pip --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip"
 
 RUN if [ "${TARGETARCH}" = "arm" ]; \
@@ -156,10 +156,10 @@ RUN if [ "${TARGETARCH}" = "arm" ]; \
     fi
 
 COPY requirements.txt /requirements.txt
-RUN --mount=type=cache,target=/root/.cache/pip pip3 install -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages pip3 install -r requirements.txt
 
 COPY requirements-wheels.txt /requirements-wheels.txt
-RUN --mount=type=cache,target=/root/.cache/pip pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
+RUN --mount=type=cache,target=/root/.cache/pip --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages  pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
 
 # Make this a separate target so it can be built/cached optionally
 FROM wheels as trt-wheels
