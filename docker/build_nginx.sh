@@ -2,10 +2,10 @@
 
 set -euxo pipefail
 
-NGINX_VERSION="1.22.1"
-VOD_MODULE_VERSION="1.30"
-SECURE_TOKEN_MODULE_VERSION="1.4"
-RTMP_MODULE_VERSION="1.2.1"
+NGINX_VERSION="1.23.3"
+VOD_MODULE_VERSION="1.31"
+SECURE_TOKEN_MODULE_VERSION="1.5"
+RTMP_MODULE_VERSION="1.2.2-r1"
 
 cp /etc/apt/sources.list /etc/apt/sources.list.d/sources-src.list
 sed -i 's|deb http|deb-src http|g' /etc/apt/sources.list.d/sources-src.list
@@ -16,6 +16,7 @@ apt-get -yqq build-dep nginx
 apt-get -yqq install --no-install-recommends ca-certificates wget
 update-ca-certificates -f
 mkdir /tmp/nginx
+cd /tmp
 wget -nv https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz
 tar -zxf nginx-${NGINX_VERSION}.tar.gz -C /tmp/nginx --strip-components=1
 rm nginx-${NGINX_VERSION}.tar.gz
@@ -30,7 +31,7 @@ wget https://github.com/kaltura/nginx-secure-token-module/archive/refs/tags/${SE
 tar -zxf ${SECURE_TOKEN_MODULE_VERSION}.tar.gz -C /tmp/nginx-secure-token-module --strip-components=1
 rm ${SECURE_TOKEN_MODULE_VERSION}.tar.gz
 mkdir /tmp/nginx-rtmp-module
-wget -nv https://github.com/arut/nginx-rtmp-module/archive/refs/tags/v${RTMP_MODULE_VERSION}.tar.gz
+wget -nv https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/archive/refs/tags/v${RTMP_MODULE_VERSION}.tar.gz
 tar -zxf v${RTMP_MODULE_VERSION}.tar.gz -C /tmp/nginx-rtmp-module --strip-components=1
 rm v${RTMP_MODULE_VERSION}.tar.gz
 
