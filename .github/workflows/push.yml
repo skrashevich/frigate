@@ -46,9 +46,5 @@ jobs:
           ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ matrix.tag }}${{ github.ref_name }}-${{ env.SHORT_SHA }}
           ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ matrix.tag }}${{ github.ref_name }}
         target: ${{ matrix.target }}
-        cache-from: |
-          type=local,src=/tmp/.buildx-cache
-          type=gha
-        cache-to: |
-          type=local,dest=/tmp/.buildx-cache,mode=max
-          type=gha
+        cache-from: type=gha
+        cache-to: type=gha
