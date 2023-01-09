@@ -15,9 +15,9 @@ local: version
 local-trt: version
 	docker buildx build --target=frigate-tensorrt --tag frigate:latest-tensorrt --load .
 
-amd64:
-	docker buildx build --push --platform linux/amd64 --target=frigate --tag $(IMAGE_REPO):$(VERSION)-$(COMMIT_HASH) --tag $(IMAGE_REPO):$(VERSION)-latest .
-	docker buildx build --push --platform linux/amd64 --target=frigate-tensorrt --tag $(IMAGE_REPO):$(VERSION)-$(COMMIT_HASH)-tensorrt --tag $(IMAGE_REPO):$(VERSION)-tensorrt-latest .
+amd64: version
+	docker buildx build --push --platform linux/amd64 --target=frigate --cache-to type=registry,ref=$(IMAGE_REPO):buildcache --cache-from type=registry,ref=$(IMAGE_REPO):buildcache --tag $(IMAGE_REPO):$(VERSION)-$(COMMIT_HASH) --tag $(IMAGE_REPO):$(VERSION)-latest .
+	docker buildx build --push --platform linux/amd64 --target=frigate-tensorrt --cache-to type=registry,ref=$(IMAGE_REPO):buildcache --cache-from type=registry,ref=$(IMAGE_REPO):buildcache --tag $(IMAGE_REPO):$(VERSION)-$(COMMIT_HASH)-tensorrt --tag $(IMAGE_REPO):$(VERSION)-tensorrt-latest .
 
 arm64:
 	docker buildx build --platform linux/arm64 --target=frigate --tag $(IMAGE_REPO):$(VERSION)-$(COMMIT_HASH) .
