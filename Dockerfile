@@ -168,7 +168,7 @@ ARG TARGETARCH
 
 # Add TensorRT wheels to another folder
 COPY requirements-tensorrt.txt /requirements-tensorrt.txt
-RUN --mount=type=cache,target=/root/.cache/pip mkdir -p /trt-wheels && pip3 wheel --wheel-dir=/trt-wheels -r requirements-tensorrt.txt
+RUN --mount=type=cache,target=/root/.cache/pip --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages mkdir -p /trt-wheels && pip3 wheel --wheel-dir=/trt-wheels -r requirements-tensorrt.txt
 
 
 # Collect deps in a single layer
