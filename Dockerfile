@@ -67,7 +67,7 @@ RUN --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages --mount=typ
     && pip install -r /requirements-ov.txt
 
 # Get OpenVino Model
-RUN mkdir /models \
+RUN --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages --mount=type=cache,target=/root/.cache/pip mkdir /models \
     && cd /models && omz_downloader --name ssdlite_mobilenet_v2 \
     && cd /models && omz_converter --name ssdlite_mobilenet_v2 --precision FP16
 
