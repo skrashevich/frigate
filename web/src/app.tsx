@@ -36,6 +36,7 @@ export default function App() {
                     getComponent={Routes.getRecording}
                   />
                   <AsyncRoute path="/storage" getComponent={Routes.getStorage} />
+                  <AsyncRoute path="/go2rtc" getComponent={Routes.getGo2RTC} />
                   <AsyncRoute path="/system" getComponent={Routes.getSystem} />
                   <AsyncRoute path="/config" getComponent={Routes.getConfig} />
                   <AsyncRoute path="/logs" getComponent={Routes.getLogs} />

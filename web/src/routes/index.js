@@ -38,6 +38,11 @@ export async function getStorage(_url, _cb, _props) {
   return module.default;
 }
 
+export async function getGo2RTC(_url, _cb, _props) {
+  const module = await import('./Go2RTC.jsx');
+  return module.default;
+}
+
 export async function getConfig(_url, _cb, _props) {
   const module = await import('./Config.jsx');
   return module.default;
