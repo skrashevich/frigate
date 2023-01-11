@@ -32,7 +32,7 @@ ARG DEBIAN_FRONTEND
 
 RUN <<EOT
     apt update --allow-insecure-repositories
-    apt install -y --no-install-recommends ca-certificates
+    apt install -y --no-install-recommends ca-certificates xz-utils
     update-ca-certificates
 EOT
 
@@ -196,17 +196,6 @@ ENV NVIDIA_DRIVER_CAPABILITIES="compute,video,utility"
 ENV PATH="/usr/lib/btbn-ffmpeg/bin:/usr/local/go2rtc/bin:/usr/local/nginx/sbin:${PATH}"
 
 # Install dependencies
-
-RUN apt-get -qq update
-
-RUN apt-get -qq install --no-install-recommends -y \
-    apt-transport-https \
-    gnupg \
-    wget \
-    git \
-    procps vainfo \
-    unzip locales tzdata libxml2 xz-utils \
-    python3-pip
 
 RUN  --mount=type=bind,source=docker/install_deps.sh,target=/deps/install_deps.sh \
     /deps/install_deps.sh
