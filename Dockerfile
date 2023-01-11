@@ -32,7 +32,7 @@ ARG DEBIAN_FRONTEND
 
 RUN <<EOT
     apt update --allow-insecure-repositories
-    apt install -y --no-install-recommends ca-certificates xz-utils
+    apt install -y --no-install-recommends ca-certificates xz-utils wget
     update-ca-certificates
 EOT
 
