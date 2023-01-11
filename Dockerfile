@@ -6,24 +6,24 @@ ARG DEBIAN_FRONTEND=noninteractive
 FROM debian:11 AS base
 ARG DEBIAN_FRONTEND
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked <<EOT
-    apt-get update
-    apt-get install -y --no-install-recommends ca-certificates
+    apt update --allow-insecure-repositories
+    apt install -y --no-install-recommends ca-certificates
     update-ca-certificates
 EOT
 
 FROM --platform=linux/amd64 debian:11 AS base_amd64
 ARG DEBIAN_FRONTEND
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked <<EOT
-    apt-get update
-    apt-get install -y --no-install-recommends ca-certificates
+    apt update --allow-insecure-repositories
+    apt install -y --no-install-recommends ca-certificates
     update-ca-certificates
 EOT
 
 FROM debian:11-slim AS slim-base
 ARG DEBIAN_FRONTEND
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked <<EOT
-    apt-get update
-    apt-get install -y --no-install-recommends ca-certificates
+    apt update --allow-insecure-repositories
+    apt install -y --no-install-recommends ca-certificates
     update-ca-certificates
 EOT
 
@@ -31,8 +31,8 @@ FROM slim-base AS wget
 ARG DEBIAN_FRONTEND
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked <<EOT
-    apt-get update
-    apt-get install -y --no-install-recommends wget xz-utils
+    apt update --allow-insecure-repositories
+    apt install -y --no-install-recommends ca-certificates
     update-ca-certificates
 EOT
 
@@ -60,7 +60,7 @@ ARG DEBIAN_FRONTEND
 
 # Install OpenVino Runtime and Dev library
 ADD requirements-ov.txt /requirements-ov.txt
-RUN --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages --mount=type=cache,target=/root/.cache/pip apt-get -qq update \
+RUN --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages --mount=type=cache,target=/root/.cache/pip --mount=type=cache,target=/var/cache/apt,sharing=private  apt-get -qq update \
     && apt-get -qq install -y wget python3 python3-distutils \
     && wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip" \
@@ -159,7 +159,7 @@ COPY requirements.txt /requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages pip3 install -r requirements.txt
 
 COPY requirements-wheels.txt /requirements-wheels.txt
-RUN --mount=type=cache,target=/root/.cache/pip --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages  pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
+RUN --mount=type=cache,target=/root/.cache/pip --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
 
 # Make this a separate target so it can be built/cached optionally
 FROM wheels as trt-wheels
