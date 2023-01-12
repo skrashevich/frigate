@@ -9,6 +9,7 @@ import axios from 'axios';
 import { Table, Tbody, Thead, Tr, Th, Td } from '../components/Table';
 import { useState } from 'preact/hooks';
 import Dialog from '../components/Dialog';
+import copy from 'copy-to-clipboard';
 
 const emptyObject = Object.freeze({});
 
@@ -54,7 +55,7 @@ export default function System() {
   };
 
   const onCopyFfprobe = async () => {
-    await window.navigator.clipboard.writeText(JSON.stringify(state.ffprobe, null, 2));
+    copy(JSON.stringify(state.ffprobe, null, 2));
     setState({ ...state, ffprobe: '', showFfprobe: false });
   };
 
@@ -73,7 +74,7 @@ export default function System() {
   };
 
   const onCopyVainfo = async () => {
-    await window.navigator.clipboard.writeText(JSON.stringify(state.vaifp, null, 2));
+    copy(JSON.stringify(state.vainfo, null, 2));
     setState({ ...state, vainfo: '', showVainfo: false });
   };
 
@@ -141,15 +142,15 @@ export default function System() {
                     <Thead>
                       <Tr>
                         <Th>P-ID</Th>
-                        <Th>Detection Start</Th>
                         <Th>Inference Speed</Th>
+                        <Th>CPU %</Th>
                       </Tr>
                     </Thead>
                     <Tbody>
                       <Tr>
                         <Td>{detectors[detector]['pid']}</Td>
-                        <Td>{detectors[detector]['detection_start']}</Td>
-                        <Td>{detectors[detector]['inference_speed']}</Td>
+                        <Td>{detectors[detector]['inference_speed']} ms</Td>
+                        <Td>{cpu_usages[detectors[detector]['pid']]?.['cpu'] || '- '}%</Td>
                       </Tr>
                     </Tbody>
                   </Table>
@@ -184,7 +185,7 @@ export default function System() {
                       <Table className="w-full">
                         <Thead>
                           <Tr>
-                            <Th>Gpu %</Th>
+                            <Th>GPU %</Th>
                             <Th>Memory %</Th>
                           </Tr>
                         </Thead>
@@ -219,20 +220,27 @@ export default function System() {
                         <Tr>
                           <Th>Process</Th>
                           <Th>P-ID</Th>
-                          <Th>fps</Th>
-                          <Th>Cpu %</Th>
+                          <Th>FPS</Th>
+                          <Th>CPU %</Th>
                           <Th>Memory %</Th>
                         </Tr>
                       </Thead>
                       <Tbody>
-                        <Tr key="capture" index="0">
+                        <Tr key="ffmpeg" index="0">
+                          <Td>ffmpeg</Td>
+                          <Td>{cameras[camera]['ffmpeg_pid'] || '- '}</Td>
+                          <Td>{cameras[camera]['camera_fps'] || '- '}</Td>
+                          <Td>{cpu_usages[cameras[camera]['ffmpeg_pid']]?.['cpu'] || '- '}%</Td>
+                          <Td>{cpu_usages[cameras[camera]['ffmpeg_pid']]?.['mem'] || '- '}%</Td>
+                        </Tr>                        
+                        <Tr key="capture" index="1">
                           <Td>Capture</Td>
                           <Td>{cameras[camera]['capture_pid'] || '- '}</Td>
                           <Td>{cameras[camera]['process_fps'] || '- '}</Td>
                           <Td>{cpu_usages[cameras[camera]['capture_pid']]?.['cpu'] || '- '}%</Td>
                           <Td>{cpu_usages[cameras[camera]['capture_pid']]?.['mem'] || '- '}%</Td>
                         </Tr>
-                        <Tr key="detect" index="1">
+                        <Tr key="detect" index="2">
                           <Td>Detect</Td>
                           <Td>{cameras[camera]['pid'] || '- '}</Td>
                           <Td>
@@ -240,13 +248,6 @@ export default function System() {
                           </Td>
                           <Td>{cpu_usages[cameras[camera]['pid']]?.['cpu'] || '- '}%</Td>
                           <Td>{cpu_usages[cameras[camera]['pid']]?.['mem'] || '- '}%</Td>
-                        </Tr>
-                        <Tr key="ffmpeg" index="2">
-                          <Td>ffmpeg</Td>
-                          <Td>{cameras[camera]['ffmpeg_pid'] || '- '}</Td>
-                          <Td>{cameras[camera]['camera_fps'] || '- '}</Td>
-                          <Td>{cpu_usages[cameras[camera]['ffmpeg_pid']]?.['cpu'] || '- '}%</Td>
-                          <Td>{cpu_usages[cameras[camera]['ffmpeg_pid']]?.['mem'] || '- '}%</Td>
                         </Tr>
                       </Tbody>
                     </Table>

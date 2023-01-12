@@ -5,34 +5,34 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 FROM debian:11 AS base
 ARG DEBIAN_FRONTEND
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked <<EOT
-    apt-get update
-    apt-get install -y --no-install-recommends ca-certificates
+RUN <<EOT
+    apt update --allow-insecure-repositories
+    apt install -y --no-install-recommends ca-certificates
     update-ca-certificates
 EOT
 
 FROM --platform=linux/amd64 debian:11 AS base_amd64
 ARG DEBIAN_FRONTEND
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked <<EOT
-    apt-get update
-    apt-get install -y --no-install-recommends ca-certificates
+RUN <<EOT
+    apt update --allow-insecure-repositories
+    apt install -y --no-install-recommends ca-certificates
     update-ca-certificates
 EOT
 
 FROM debian:11-slim AS slim-base
 ARG DEBIAN_FRONTEND
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked <<EOT
-    apt-get update
-    apt-get install -y --no-install-recommends ca-certificates
+RUN <<EOT
+    apt update --allow-insecure-repositories
+    apt install -y --no-install-recommends ca-certificates
     update-ca-certificates
 EOT
 
 FROM slim-base AS wget
 ARG DEBIAN_FRONTEND
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked <<EOT
-    apt-get update
-    apt-get install -y --no-install-recommends wget xz-utils
+RUN <<EOT
+    apt update --allow-insecure-repositories
+    apt install -y --no-install-recommends ca-certificates xz-utils wget
     update-ca-certificates
 EOT
 
@@ -42,7 +42,7 @@ FROM base AS nginx
 ARG DEBIAN_FRONTEND
 
 # bind /var/cache/apt to tmpfs to speed up nginx build
-RUN --mount=type=tmpfs,target=/tmp --mount=type=cache,target=/var/cache/apt,sharing=private \
+RUN --mount=type=tmpfs,target=/tmp  \
     --mount=type=bind,source=docker/build_nginx.sh,target=/deps/build_nginx.sh \
     /deps/build_nginx.sh
 
@@ -60,14 +60,14 @@ ARG DEBIAN_FRONTEND
 
 # Install OpenVino Runtime and Dev library
 ADD requirements-ov.txt /requirements-ov.txt
-RUN --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages --mount=type=cache,target=/root/.cache/pip apt-get -qq update \
+RUN     apt-get -qq update \
     && apt-get -qq install -y wget python3 python3-distutils \
     && wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip" \
     && pip install -r /requirements-ov.txt
 
 # Get OpenVino Model
-RUN mkdir /models \
+RUN   mkdir /models \
     && cd /models && omz_downloader --name ssdlite_mobilenet_v2 \
     && cd /models && omz_converter --name ssdlite_mobilenet_v2 --precision FP16
 
@@ -79,13 +79,13 @@ ARG DEBIAN_FRONTEND
 
 # Build libUSB without udev.  Needed for Openvino NCS2 support
 WORKDIR /opt
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked apt-get update && apt-get install -y --no-install-recommends unzip build-essential automake libtool
+RUN apt-get update && apt-get install -y --no-install-recommends unzip build-essential automake libtool
 RUN wget -q https://github.com/libusb/libusb/archive/v1.0.25.zip -O v1.0.25.zip && \
     unzip v1.0.25.zip && cd libusb-1.0.25 && \
     ./bootstrap.sh && \
     ./configure --disable-udev --enable-shared && \
     make -j $(nproc --all)
-RUN --mount=type=cache,target=/var/cache/apt,sharing=private apt-get update && \
+RUN  apt-get update && \
     apt-get install -y --no-install-recommends libusb-1.0-0-dev && \
     apt-get clean
 WORKDIR /opt/libusb-1.0.25/libusb
@@ -124,7 +124,7 @@ ARG DEBIAN_FRONTEND
 ARG TARGETARCH
 
 # Use a separate container to build wheels to prevent build dependencies in final image
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,target=/root/.cache/pip --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages apt-get -qq update \
+RUN   apt-get -qq update \
     && apt-get -qq install -y --no-install-recommends \
     apt-transport-https \
     gnupg \
@@ -147,7 +147,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,t
     gcc gfortran libopenblas-dev liblapack-dev && \
     apt-get clean
 
-RUN --mount=type=cache,target=/root/.cache/pip --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
+RUN   wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip"
 
 RUN if [ "${TARGETARCH}" = "arm" ]; \
@@ -156,10 +156,10 @@ RUN if [ "${TARGETARCH}" = "arm" ]; \
     fi
 
 COPY requirements.txt /requirements.txt
-RUN --mount=type=cache,target=/root/.cache/pip --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages pip3 install -r requirements.txt
+RUN   pip3 install -r requirements.txt
 
 COPY requirements-wheels.txt /requirements-wheels.txt
-RUN --mount=type=cache,target=/root/.cache/pip --mount=type=cache,target=/usr/local/lib/python3.9/dist-packages  pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
+RUN   pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
 
 # Make this a separate target so it can be built/cached optionally
 FROM wheels as trt-wheels
@@ -168,7 +168,7 @@ ARG TARGETARCH
 
 # Add TensorRT wheels to another folder
 COPY requirements-tensorrt.txt /requirements-tensorrt.txt
-RUN --mount=type=cache,target=/root/.cache/pip mkdir -p /trt-wheels && pip3 wheel --wheel-dir=/trt-wheels -r requirements-tensorrt.txt
+RUN   mkdir -p /trt-wheels && pip3 wheel --wheel-dir=/trt-wheels -r requirements-tensorrt.txt
 
 
 # Collect deps in a single layer
@@ -197,21 +197,10 @@ ENV PATH="/usr/lib/btbn-ffmpeg/bin:/usr/local/go2rtc/bin:/usr/local/nginx/sbin:$
 
 # Install dependencies
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked apt-get -qq update
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked apt-get -qq install --no-install-recommends -y \
-    apt-transport-https \
-    gnupg \
-    wget \
-    git \
-    procps vainfo \
-    unzip locales tzdata libxml2 xz-utils \
-    python3-pip
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=private --mount=type=bind,source=docker/install_deps.sh,target=/deps/install_deps.sh \
+RUN  --mount=type=bind,source=docker/install_deps.sh,target=/deps/install_deps.sh \
     /deps/install_deps.sh
 
-RUN --mount=type=cache,target=/root/.cache/pip --mount=type=bind,from=wheels,source=/wheels,target=/deps/wheels \
+RUN  --mount=type=bind,from=wheels,source=/wheels,target=/deps/wheels \
     pip3 install -U /deps/wheels/*.whl
 
 COPY --from=deps-rootfs / /
@@ -252,7 +241,7 @@ FROM deps AS devcontainer
 COPY docker/fake_frigate_run /etc/services.d/frigate/run
 
 # Install Node 16
-RUN --mount=type=cache,target=/var/cache/apt,sharing=private apt-get update \
+RUN  apt-get update \
     && apt-get install --no-install-recommends wget -y \
     && wget -qO- https://deb.nodesource.com/setup_16.x | bash - \
     && apt-get install -y --no-install-recommends nodejs  \
@@ -261,7 +250,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private apt-get update \
 
 WORKDIR /workspace/frigate
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=private apt-get update \
+RUN  apt-get update \
     && apt-get install --no-install-recommends make -y \
     && rm -rf /var/lib/apt/lists/*
 

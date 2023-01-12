@@ -47,4 +47,4 @@ jobs:
           ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ matrix.tag }}${{ github.ref_name }}
         target: ${{ matrix.target }}
         cache-from: type=gha
-        cache-to: type=gha
+        cache-to: type=gha,mode=max
