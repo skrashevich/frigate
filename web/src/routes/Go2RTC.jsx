@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
 const emptyObject = Object.freeze({});
 
 export default function Go2RTC() {
