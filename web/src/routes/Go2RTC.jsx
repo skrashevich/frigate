@@ -7,6 +7,7 @@ import Heading from '../components/Heading';
 import { useEffect, useState } from 'preact/hooks';
 import Button from '../components/Button';
 import { editor, Uri } from 'monaco-editor';
+import { setDiagnosticsOptions } from 'monaco-yaml';
 import copy from 'copy-to-clipboard';
 
 export default function Go2RTC() {
@@ -76,7 +77,7 @@ export default function Go2RTC() {
   return (
     <div className="space-y-4 p-2 px-4 h-full">
       <div className="flex justify-between">
-        <Heading>Config</Heading>
+        <Heading>go2rtc</Heading>
         <div>
           <Button className="mx-2" onClick={(e) => handleCopyConfig(e)}>
             Copy Config
