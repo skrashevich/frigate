@@ -5,6 +5,7 @@ import { WsProvider } from './ws';
 import axios from 'axios';
 
 axios.defaults.baseURL = `${baseUrl}api/`;
+axios.defaults.Go2RTCbaseURL = `${baseUrl}go2rtc/api/`;
 
 export function ApiProvider({ children, options }) {
   return (
@@ -26,4 +27,7 @@ function WsWithConfig({ children }) {
 
 export function useApiHost() {
   return baseUrl;
+}
+export function useGo2RTCApiHost() {
+  return Go2RTCbaseURL;
 }
