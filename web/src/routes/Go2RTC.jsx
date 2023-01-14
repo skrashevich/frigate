@@ -13,7 +13,7 @@ import copy from 'copy-to-clipboard';
 export default function Go2RTC() {
   const apiHost = useApiHost();
 
-  const { data: config } = useSWR('go2rtc/getConfig');
+  const { data: config } = useSWR('go2rtc/config');
   const [success, setSuccess] = useState();
   const [error, setError] = useState();
 
@@ -23,7 +23,7 @@ export default function Go2RTC() {
     }
 
     axios
-      .post('go2rtc/saveConfig', window.editor.getValue(), {
+      .post('go2rtc/config', window.editor.getValue(), {
         headers: { 'Content-Type': 'text/plain' },
       })
       .then((response) => {
