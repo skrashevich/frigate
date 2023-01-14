@@ -52,15 +52,6 @@ export default function Go2RTC() {
       // we don't need to recreate the editor if it already exists
       return;
     }
-    /*
-    const modelUri = Uri.parse('a://b/api/config/schema.json');
-
-    let yamlModel;
-    if (editor.getModels().length > 0) {
-      yamlModel = editor.getModel(modelUri)
-    } else {
-      yamlModel = editor.createModel(config, 'yaml', modelUri)
-    }
 
     setDiagnosticsOptions({
       enableSchemaRequest: true,
@@ -68,17 +59,11 @@ export default function Go2RTC() {
       completion: true,
       validate: true,
       format: true,
-      schemas: [
-        {
-          uri: `${apiHost}/api/config/schema.json`,
-          fileMatch: [String(modelUri)],
-        },
-      ],
     });
-    */
+    
     window.editor = editor.create(document.getElementById('container_go2rtc'), {
       language: 'yaml',
-      //model: yamlModel,
+      value: config,
       scrollBeyondLastLine: false,
       theme: 'vs-dark',
     });
