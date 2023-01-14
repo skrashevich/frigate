@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { baseUrl, Go2RTCbaseURL } from './baseUrl';
+import { baseUrl } from './baseUrl';
 import useSWR, { SWRConfig } from 'swr';
 import { WsProvider } from './ws';
 import axios from 'axios';
@@ -26,7 +26,4 @@ function WsWithConfig({ children }) {
 
 export function useApiHost() {
   return baseUrl;
-}
-export function useGo2RTCApiHost() {
-  return Go2RTCbaseURL;
 }
