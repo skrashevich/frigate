@@ -1,117 +1,112 @@
-import { useState, useRef, useCallback, useMemo } from 'preact/hooks';
-const emptyObject = Object.freeze({});
+import { h } from 'preact';
+import useSWR from 'swr';
+import axios from 'axios';
+import { useGo2RTCApiHost } from '../api';
+import ActivityIndicator from '../components/ActivityIndicator';
+import Heading from '../components/Heading';
+import { useEffect, useState } from 'preact/hooks';
+import Button from '../components/Button';
+import { editor, Uri } from 'monaco-editor';
+import { setDiagnosticsOptions } from 'monaco-yaml';
+import copy from 'copy-to-clipboard';
 
 export default function Go2RTC() {
+  const apiHost = useGo2RTCApiHost();
 
-  const [streamData, setStreamData] = useState({});
+  const { data: config } = useSWR('${apiHost}getConfig');
+  const [success, setSuccess] = useState();
+  const [error, setError] = useState();
 
-  const templates = [
-    '<a href="stream.html?src={name}">stream</a>',
-    '<a href="webrtc.html?src={name}">2-way-aud</a>',
-    '<a href="api/stream.mp4?src={name}">mp4</a>',
-    '<a href="api/stream.mjpeg?src={name}">mjpeg</a>',
-    '<a href="api/streams?src={name}">info</a>',
-    '<a href="#" data-name="{name}">delete</a>',
-  ];
+  const onHandleSaveConfig = async (e) => {
+    if (e) {
+      e.stopPropagation();
+    }
 
-  const addStream = () => {
-    const src = document.querySelector('#src');
-    const url = new URL('go2rtc/api/streams', location.href);
-    url.searchParams.set('src', src.value);
-    fetch(url, { method: 'PUT' }).then(reload);
+    axios
+      .post('${apiHost}saveConfig', window.editor.getValue(), {
+        headers: { 'Content-Type': 'text/plain' },
+      })
+      .then((response) => {
+        if (response.status === 200) {
+          setSuccess(response.data);
+        }
+      })
+      .catch((error) => {
+        if (error.response) {
+          setError(error.response.data.message);
+        } else {
+          setError(error.message);
+        }
+      });
   };
 
-  const selectStreams = () => {
-    const url = new URL('stream.html', location.href);
-
-    const streams = document.querySelectorAll('#streams input');
-    streams.forEach((i) => {
-      if (i.checked) url.searchParams.append('src', i.name);
-    });
-
-    if (!url.searchParams.has('src')) return;
-
-    let mode = document.querySelectorAll('.controls input');
-    mode = Array.from(mode).filter((i) => i.checked).map((i) => i.name).join(',');
-
-    window.location.href = `${url}&mode=${mode}`;
-  };
-
-  const deleteStream = (ev) => {
-    if (ev.target.innerText !== 'delete') return;
-
-    ev.preventDefault();
-
-    const url = new URL('go2rtc/api/streams', location.href);
-    url.searchParams.set('src', ev.target.dataset.name);
-    fetch(url, { method: 'DELETE' }).then(reload);
-  };
-
-  const reload = () => {
-    const url = new URL('go2rtc/api/streams', location.href);
-    fetch(url).then((r) => r.json()).then((data) => {
-      setStreamData(data);
-    });
+  const handleCopyConfig = async () => {
+    copy(window.editor.getValue());
   };
 
   useEffect(() => {
-    reload();
-    const editor = ace.edit('config', {
-      useWorker: false,
-      printMargin: false,
-    });
-    editor.session.setMode('ace/mode/yaml');
-    editor.setTheme('ace/theme/github');
+    if (!config) {
+      return;
+    }
 
-    const xhr = new XMLHttpRequest();
-    xhr.open('GET', 'go2rtc/api/getConfig', true);
-    xhr.onload = function () {
-      if (xhr.status === 200) {
-        editor.setValue(xhr.responseText);
-      }
-    };
-    xhr.send();
-  }, []);
- 
+    if (document.getElementById('container').children.length > 0) {
+      // we don't need to recreate the editor if it already exists
+      return;
+    }
+    /*
+    const modelUri = Uri.parse('a://b/api/config/schema.json');
+
+    let yamlModel;
+    if (editor.getModels().length > 0) {
+      yamlModel = editor.getModel(modelUri)
+    } else {
+      yamlModel = editor.createModel(config, 'yaml', modelUri)
+    }
+
+    setDiagnosticsOptions({
+      enableSchemaRequest: true,
+      hover: true,
+      completion: true,
+      validate: true,
+      format: true,
+      schemas: [
+        {
+          uri: `${apiHost}/api/config/schema.json`,
+          fileMatch: [String(modelUri)],
+        },
+      ],
+    });
+    */
+    window.editor = editor.create(document.getElementById('container'), {
+      language: 'yaml',
+      //model: yamlModel,
+      scrollBeyondLastLine: false,
+      theme: 'vs-dark',
+    });
+  });
+
+  if (!config) {
+    return <ActivityIndicator />;
+  }
+
   return (
-    <div>
-      <table id="streams">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Online</th>
-            <th>Commands</th>
-          </tr>
-        </thead>
-        <tbody onClick={deleteStream}>
-          {Object.entries(streamData).map(([name, value]) => {
-            const online = value ? value.length : 0;
-            const links = templates.map((link) => link.replace('{name}', encodeURIComponent(name))).join(' ');
-            return (
-              <tr key={name} data-id={name}>
-                <td>
-                  <label htmlFor={name}>
-                    <input type="checkbox" id={name} name={name} />
-                    {name}
-                  </label>
-                </td>
-                <td>{online}</td>
-                <td>{links}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <button type="button" id="add" onClick={addStream}>Add</button>
-      <div className="controls">
-        <button type="button" onClick={selectStreams}>Select</button>
+    <div className="space-y-4 p-2 px-4 h-full">
+      <div className="flex justify-between">
+        <Heading>Config</Heading>
+        <div>
+          <Button className="mx-2" onClick={(e) => handleCopyConfig(e)}>
+            Copy Config
+          </Button>
+          <Button className="mx-2" onClick={(e) => onHandleSaveConfig(e)}>
+            Save & Restart
+          </Button>
+        </div>
       </div>
 
-    <AceEditor id="config" />
-    <button type="button" id="save-button" onClick={handleSave}>
-      Save
-    </button>
-  </div>
-    );
+      {success && <div className="max-h-20 text-green-500">{success}</div>}
+      {error && <div className="p-4 overflow-scroll text-red-500 whitespace-pre-wrap">{error}</div>}
+
+      <div id="container" className="h-full" />
+    </div>
+  );
 }
-  
