@@ -1,11 +1,11 @@
 import { h } from 'preact';
-import { baseUrl } from './baseUrl';
+import { baseUrl, Go2RTCbaseURL } from './baseUrl';
 import useSWR, { SWRConfig } from 'swr';
 import { WsProvider } from './ws';
 import axios from 'axios';
 
 axios.defaults.baseURL = `${baseUrl}api/`;
-axios.defaults.Go2RTCbaseURL = `${baseUrl}go2rtc/api/`;
+axios.defaults.Go2RTCbaseURL = `${Go2RTCbaseURL}go2rtc/api/`;
 
 export function ApiProvider({ children, options }) {
   return (
