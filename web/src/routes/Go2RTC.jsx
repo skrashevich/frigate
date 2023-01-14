@@ -9,11 +9,14 @@ import Button from '../components/Button';
 import { editor, Uri } from 'monaco-editor';
 import { setDiagnosticsOptions } from 'monaco-yaml';
 import copy from 'copy-to-clipboard';
+import { Go2RTCbaseURL } from './baseUrl';
 
 export default function Go2RTC() {
   const apiHost = useGo2RTCApiHost();
 
-  const { data: config } = useSWR('${apiHost}getConfig');
+  axios.defaults.baseURL = `${Go2RTCbaseURL}go2rtc/api/`;
+
+  const { data: config } = useSWR('getConfig');
   const [success, setSuccess] = useState();
   const [error, setError] = useState();
 
@@ -23,7 +26,7 @@ export default function Go2RTC() {
     }
 
     axios
-      .post('${apiHost}saveConfig', window.editor.getValue(), {
+      .post('saveConfig', window.editor.getValue(), {
         headers: { 'Content-Type': 'text/plain' },
       })
       .then((response) => {
