@@ -7,14 +7,12 @@ import Heading from '../components/Heading';
 import { useEffect, useState } from 'preact/hooks';
 import Button from '../components/Button';
 import { editor, Uri } from 'monaco-editor';
-import { setDiagnosticsOptions } from 'monaco-yaml';
 import copy from 'copy-to-clipboard';
-import { Go2RTCbaseURL } from './baseUrl';
 
 export default function Go2RTC() {
   const apiHost = useGo2RTCApiHost();
 
-  axios.defaults.baseURL = `${Go2RTCbaseURL}go2rtc/api/`;
+  axios.defaults.baseURL = `${apiHost}go2rtc/api/`;
 
   const { data: config } = useSWR('getConfig');
   const [success, setSuccess] = useState();
