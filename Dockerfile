@@ -174,7 +174,7 @@ RUN   mkdir -p /trt-wheels && pip3 wheel --wheel-dir=/trt-wheels -r requirements
 # Collect deps in a single layer
 FROM --platform=$BUILDPLATFORM scratch AS deps-rootfs
 COPY --link --from=nginx /usr/local/nginx/ /usr/local/nginx/
-COPY --link --from=skrashevich/go2rtc:nvidia-docker /usr/local/bin/go2rtc /usr/local/go2rtc/bin/go2rtc
+COPY --link --from=alexxit/go2rtc /usr/local/bin/go2rtc /usr/local/go2rtc/bin/go2rtc
 COPY --link --from=libusb-build /usr/local/lib /usr/local/lib
 COPY --link --from=s6-overlay /rootfs/ /
 COPY --link --from=models /rootfs/ /
