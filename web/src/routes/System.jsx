@@ -180,7 +180,7 @@ export default function System() {
                   <div className="p-2">
                     {gpu_usages[gpu]['gpu'] == -1 ? (
                       <div className="p-4">
-                        There was an error getting usage stats. Either your GPU does not support this or frigate does
+                        There was an error getting usage stats. Either your GPU does not support this or Frigate does
                         not have proper access.
                       </div>
                     ) : (
@@ -234,7 +234,7 @@ export default function System() {
                           <Td>{cameras[camera]['camera_fps'] || '- '}</Td>
                           <Td>{cpu_usages[cameras[camera]['ffmpeg_pid']]?.['cpu'] || '- '}%</Td>
                           <Td>{cpu_usages[cameras[camera]['ffmpeg_pid']]?.['mem'] || '- '}%</Td>
-                        </Tr>                        
+                        </Tr>
                         <Tr key="capture" index="1">
                           <Td>Capture</Td>
                           <Td>{cameras[camera]['capture_pid'] || '- '}</Td>
@@ -245,9 +245,13 @@ export default function System() {
                         <Tr key="detect" index="2">
                           <Td>Detect</Td>
                           <Td>{cameras[camera]['pid'] || '- '}</Td>
-                          <Td>
-                            {cameras[camera]['detection_fps']} ({cameras[camera]['skipped_fps']} skipped)
-                          </Td>
+
+                          {cameras[camera]['detection_enabled'] == 1 ? (
+                            <Td>{cameras[camera]['detection_fps']} ({cameras[camera]['skipped_fps']} skipped)</Td>
+                          ) : (
+                            <Td>disabled</Td>
+                          )}
+
                           <Td>{cpu_usages[cameras[camera]['pid']]?.['cpu'] || '- '}%</Td>
                           <Td>{cpu_usages[cameras[camera]['pid']]?.['mem'] || '- '}%</Td>
                         </Tr>

@@ -27,7 +27,7 @@ cameras:
 
 ### VSCode Configuration Schema
 
-VSCode (and VSCode addon) supports the JSON schemas which will automatically validate the config. This can be added by adding `# yaml-language-server: $schema=http://frigate_host:5000/api/config/schema.json` to the top of the config file. `frigate_host` being the IP address of frigate or `ccab4aaf-frigate` if running in the addon.
+VSCode (and VSCode addon) supports the JSON schemas which will automatically validate the config. This can be added by adding `# yaml-language-server: $schema=http://frigate_host:5000/api/config/schema.json` to the top of the config file. `frigate_host` being the IP address of Frigate or `ccab4aaf-frigate` if running in the addon.
 
 ### Full configuration reference:
 
@@ -171,7 +171,7 @@ detect:
   # Optional: enables detection for the camera (default: True)
   # This value can be set via MQTT and will be updated in startup based on retained value
   enabled: True
-  # Optional: Number of frames without a detection before frigate considers an object to be gone. (default: 5x the frame rate)
+  # Optional: Number of frames without a detection before Frigate considers an object to be gone. (default: 5x the frame rate)
   max_disappeared: 25
   # Optional: Configuration for stationary object tracking
   stationary:
@@ -486,4 +486,13 @@ cameras:
       order: 0
       # Optional: Whether or not to show the camera in the Frigate UI (default: shown below)
       dashboard: True
+
+# Optional
+ui:
+  # Optional: Set the default live mode for cameras in the UI (default: shown below)
+  live_mode: mse
+  # Optional: Set a timezone to use in the UI (default: use browser local time)
+  timezone: None
+  # Optional: Use an experimental recordings / camera view UI (default: shown below)
+  experimental_ui: False
 ```

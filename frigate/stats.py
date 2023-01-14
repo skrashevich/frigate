@@ -215,6 +215,7 @@ def stats_snapshot(
             "process_fps": round(camera_stats["process_fps"].value, 2),
             "skipped_fps": round(camera_stats["skipped_fps"].value, 2),
             "detection_fps": round(camera_stats["detection_fps"].value, 2),
+            "detection_enabled": camera_stats["detection_enabled"].value,
             "pid": pid,
             "capture_pid": cpid,
             "ffmpeg_pid": ffmpeg_pid,
@@ -241,7 +242,11 @@ def stats_snapshot(
     }
 
     for path in [RECORD_DIR, CLIPS_DIR, CACHE_DIR, "/dev/shm"]:
-        storage_stats = shutil.disk_usage(path)
+        try:
+            storage_stats = shutil.disk_usage(path)
+        except FileNotFoundError:
+            stats["service"]["storage"][path] = {}
+
         stats["service"]["storage"][path] = {
             "total": round(storage_stats.total / 1000000, 1),
             "used": round(storage_stats.used / 1000000, 1),
