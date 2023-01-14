@@ -1,7 +1,7 @@
 import { h } from 'preact';
 import useSWR from 'swr';
 import axios from 'axios';
-import { useGo2RTCApiHost } from '../api';
+import { useApiHost } from '../api';
 import ActivityIndicator from '../components/ActivityIndicator';
 import Heading from '../components/Heading';
 import { useEffect, useState } from 'preact/hooks';
@@ -10,11 +10,9 @@ import { editor, Uri } from 'monaco-editor';
 import copy from 'copy-to-clipboard';
 
 export default function Go2RTC() {
-  const apiHost = useGo2RTCApiHost();
+  const apiHost = useApiHost();
 
-  axios.defaults.baseURL = `${apiHost}go2rtc/api/`;
-
-  const { data: config } = useSWR('getConfig');
+  const { data: config } = useSWR('go2rtc/getConfig');
   const [success, setSuccess] = useState();
   const [error, setError] = useState();
 
@@ -24,7 +22,7 @@ export default function Go2RTC() {
     }
 
     axios
-      .post('saveConfig', window.editor.getValue(), {
+      .post('go2rtc/saveConfig', window.editor.getValue(), {
         headers: { 'Content-Type': 'text/plain' },
       })
       .then((response) => {
@@ -50,7 +48,7 @@ export default function Go2RTC() {
       return;
     }
 
-    if (document.getElementById('container').children.length > 0) {
+    if (document.getElementById('container_go2rtc').children.length > 0) {
       // we don't need to recreate the editor if it already exists
       return;
     }
@@ -78,7 +76,7 @@ export default function Go2RTC() {
       ],
     });
     */
-    window.editor = editor.create(document.getElementById('container'), {
+    window.editor = editor.create(document.getElementById('container_go2rtc'), {
       language: 'yaml',
       //model: yamlModel,
       scrollBeyondLastLine: false,
@@ -107,7 +105,7 @@ export default function Go2RTC() {
       {success && <div className="max-h-20 text-green-500">{success}</div>}
       {error && <div className="p-4 overflow-scroll text-red-500 whitespace-pre-wrap">{error}</div>}
 
-      <div id="container" className="h-full" />
+      <div id="container_go2rtc" className="h-full" />
     </div>
   );
 }
