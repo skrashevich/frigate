@@ -14,12 +14,13 @@ from abc import ABC, abstractmethod
 from collections import Counter
 from collections.abc import Mapping
 from multiprocessing import shared_memory
-from typing import Any, AnyStr
+from typing import Any, AnyStr, Tuple
 
 import cv2
 import numpy as np
 import os
 import psutil
+import pytz
 
 from frigate.const import REGEX_HTTP_CAMERA_USER_PASS, REGEX_RTSP_CAMERA_USER_PASS
 
@@ -627,13 +628,8 @@ def clipped(obj, frame_shape):
 
 
 def restart_frigate():
-    proc = psutil.Process(1)
-    # if this is running via s6, sigterm pid 1
-    if proc.name() == "s6-svscan":
-        proc.terminate()
-    # otherwise, just try and exit frigate
-    else:
-        os.kill(os.getpid(), signal.SIGTERM)
+    # S6 overlay is configured to exit once the Frigate process exits
+    os.kill(os.getpid(), signal.SIGTERM)
 
 
 class EventsPerSecond:
@@ -1040,3 +1036,14 @@ class SharedMemoryFrameManager(FrameManager):
             self.shm_store[name].close()
             self.shm_store[name].unlink()
             del self.shm_store[name]
+
+
+def get_tz_modifiers(tz_name: str) -> Tuple[str, str]:
+    seconds_offset = (
+        datetime.datetime.now(pytz.timezone(tz_name)).utcoffset().total_seconds()
+    )
+    hours_offset = int(seconds_offset / 60 / 60)
+    minutes_offset = int(seconds_offset / 60 - hours_offset * 60)
+    hour_modifier = f"{hours_offset} hour"
+    minute_modifier = f"{minutes_offset} minute"
+    return hour_modifier, minute_modifier
