@@ -43,7 +43,7 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           target: frigate
           tags: |
-            ghcr.io/blakeblackshear/frigate:${{ github.ref_name }}-${{ env.SHORT_SHA }}
+            ghcr.io/skrashevich/frigate:${{ github.ref_name }}-${{ env.SHORT_SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Build and push TensorRT
@@ -54,5 +54,5 @@ jobs:
           platforms: linux/amd64
           target: frigate-tensorrt
           tags: |
-            ghcr.io/blakeblackshear/frigate:${{ github.ref_name }}-${{ env.SHORT_SHA }}-tensorrt
+            ghcr.io/skrashevich/frigate:${{ github.ref_name }}-${{ env.SHORT_SHA }}-tensorrt
           cache-from: type=gha
