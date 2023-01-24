@@ -103,8 +103,11 @@ RUN /bin/mkdir -p '/usr/local/lib' && \
 FROM --platform=$BUILDPLATFORM wget AS models
 
 # Get model and labels
-ADD https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess_edgetpu.tflite edgetpu_model.tflite
-ADD https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess.tflite cpu_model.tflite 
+ADD --link https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess_edgetpu.tflite edgetpu_model.tflite
+ADD --link https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess.tflite cpu_model.tflite 
+ADD --link https://raw.githubusercontent.com/google-coral/test_data/master/efficientdet_lite3_512_ptq_edgetpu.tflite /efficientdet_lite3_512_ptq_edgetpu.tflite
+ADD --link https://raw.githubusercontent.com/google-coral/test_data/master/coco_labels.txt /coco_labels.txt 
+
 COPY labelmap.txt .
 # Copy OpenVino model
 COPY --from=ov-converter /models/public/ssdlite_mobilenet_v2/FP16 openvino-model
