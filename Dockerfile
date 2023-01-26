@@ -46,6 +46,13 @@ RUN --mount=type=tmpfs,target=/tmp  \
     --mount=type=bind,source=docker/build_nginx.sh,target=/deps/build_nginx.sh \
     /deps/build_nginx.sh
 
+FROM --platform=$BUILDPLATFORM wget AS go2rtc
+ARG TARGETARCH
+WORKDIR /rootfs/usr/local/go2rtc/bin
+RUN wget -qO go2rtc "https://github.com/AlexxIT/go2rtc/releases/download/v1.0.1/go2rtc_linux_${TARGETARCH}" \
+    && chmod +x go2rtc
+
+
 ####
 #
 # OpenVino Support
@@ -108,9 +115,9 @@ ADD --link https://github.com/google-coral/test_data/raw/release-frogfish/ssdlit
 ADD --link https://raw.githubusercontent.com/google-coral/test_data/master/efficientdet_lite3_512_ptq_edgetpu.tflite /efficientdet_lite3_512_ptq_edgetpu.tflite
 ADD --link https://raw.githubusercontent.com/google-coral/test_data/master/coco_labels.txt /coco_labels.txt 
 
-COPY labelmap.txt .
+ADD labelmap.txt .
 # Copy OpenVino model
-COPY --from=ov-converter /models/public/ssdlite_mobilenet_v2/FP16 openvino-model
+COPY --link --from=ov-converter /models/public/ssdlite_mobilenet_v2/FP16 openvino-model
 ADD https://github.com/openvinotoolkit/open_model_zoo/raw/master/data/dataset_classes/coco_91cl_bkgr.txt openvino-model/coco_91cl_bkgr.txt
 RUN sed -i 's/truck/car/g' openvino-model/coco_91cl_bkgr.txt
 
@@ -127,7 +134,7 @@ ARG DEBIAN_FRONTEND
 ARG TARGETARCH
 
 # Use a separate container to build wheels to prevent build dependencies in final image
-RUN   apt-get -qq update \
+RUN apt-get -qq update \
     && apt-get -qq install -y --no-install-recommends \
     apt-transport-https \
     gnupg \
@@ -150,7 +157,7 @@ RUN   apt-get -qq update \
     gcc gfortran libopenblas-dev liblapack-dev && \
     apt-get clean
 
-RUN   wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
+RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip"
 
 RUN if [ "${TARGETARCH}" = "arm" ]; \
@@ -158,11 +165,11 @@ RUN if [ "${TARGETARCH}" = "arm" ]; \
     && echo "extra-index-url=https://www.piwheels.org/simple" >> /etc/pip.conf; \
     fi
 
-COPY requirements.txt /requirements.txt
-RUN   pip3 install -r requirements.txt
+ADD requirements.txt /requirements.txt
+RUN pip3 install -r requirements.txt
 
-COPY requirements-wheels.txt /requirements-wheels.txt
-RUN   pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
+ADD requirements-wheels.txt /requirements-wheels.txt
+RUN pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
 
 # Make this a separate target so it can be built/cached optionally
 FROM wheels as trt-wheels
@@ -170,8 +177,8 @@ ARG DEBIAN_FRONTEND
 ARG TARGETARCH
 
 # Add TensorRT wheels to another folder
-COPY requirements-tensorrt.txt /requirements-tensorrt.txt
-RUN   mkdir -p /trt-wheels && pip3 wheel --wheel-dir=/trt-wheels -r requirements-tensorrt.txt
+ADD requirements-tensorrt.txt /requirements-tensorrt.txt
+RUN mkdir -p /trt-wheels && pip3 wheel --wheel-dir=/trt-wheels -r requirements-tensorrt.txt
 
 
 # Collect deps in a single layer
@@ -181,7 +188,7 @@ COPY --link --from=alexxit/go2rtc:master /usr/local/bin/go2rtc /usr/local/go2rtc
 COPY --link --from=libusb-build /usr/local/lib /usr/local/lib
 COPY --link --from=s6-overlay /rootfs/ /
 COPY --link --from=models /rootfs/ /
-COPY docker/rootfs/ /
+ADD docker/rootfs/ /
 
 
 # Frigate deps (ffmpeg, python, nginx, go2rtc, s6-overlay, etc)
@@ -206,7 +213,7 @@ RUN  --mount=type=bind,source=docker/install_deps.sh,target=/deps/install_deps.s
 RUN  --mount=type=bind,from=wheels,source=/wheels,target=/deps/wheels \
     pip3 install -U /deps/wheels/*.whl
 
-COPY --from=deps-rootfs / /
+COPY --link --from=deps-rootfs / /
 #ADD --link docker/ffmpeg /usr/lib/btbn-ffmpeg/bin/ffmpeg
 #ADD --link docker/ffprobe /usr/lib/btbn-ffmpeg/bin/ffprobe
 #COPY --from=skrashevich/ffmpeg:linux64-nonfree-shared-5.1 /app /usr/lib/btbn-ffmpeg
@@ -229,7 +236,7 @@ FROM deps AS devcontainer
 
 # Do not start the actual Frigate service on devcontainer as it will be started by VSCode
 # But start a fake service for simulating the logs
-COPY docker/fake_frigate_run /etc/s6-overlay/s6-rc.d/frigate/run
+ADD docker/fake_frigate_run /etc/s6-overlay/s6-rc.d/frigate/run
 
 # Install Node 16
 RUN  apt-get update \
@@ -256,28 +263,28 @@ CMD ["sleep", "infinity"]
 FROM --platform=$BUILDPLATFORM node:16 AS web-build
 
 WORKDIR /work
-COPY web/package.json web/package-lock.json ./
+ADD web/package.json web/package-lock.json ./
 RUN npm install
 
-COPY web/ ./
+ADD web/ ./
 RUN npm run build \
     && mv dist/BASE_PATH/monacoeditorwork/* dist/assets/ \
     && rm -rf dist/BASE_PATH
 RUN wget https://gobinaries.com/tj/node-prune --output-document - | /bin/sh && node-prune
 
 # Collect final files in a single layer
-FROM scratch AS rootfs
+FROM --platform=$BUILDPLATFORM scratch AS rootfs
 
 WORKDIR /opt/frigate/
-COPY frigate frigate/
-COPY migrations migrations/
-COPY --from=web-build /work/dist/ web/
+ADD frigate frigate/
+ADD migrations migrations/
+COPY --link --from=web-build /work/dist/ web/
 
 # Frigate final container
 FROM deps AS frigate
 
 WORKDIR /opt/frigate/
-COPY --from=rootfs / /
+COPY --link --from=rootfs / /
 
 # Frigate w/ TensorRT Support as separate image
 FROM frigate AS frigate-tensorrt
