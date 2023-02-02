@@ -271,11 +271,6 @@ record:
   # Optional: Enable recording (default: shown below)
   # WARNING: If recording is disabled in the config, turning it on via
   #          the UI or MQTT later will have no effect.
-  # WARNING: Frigate does not currently support limiting recordings based
-  #          on available disk space automatically. If using recordings,
-  #          you must specify retention settings for a number of days that
-  #          will fit within the available disk space of your drive or Frigate
-  #          will crash.
   enabled: False
   # Optional: Number of minutes to wait between cleanup runs (default: shown below)
   # This can be used to reduce the frequency of deleting recording segments from disk if you want to minimize i/o
@@ -355,7 +350,7 @@ rtmp:
   enabled: False
 
 # Optional: Restream configuration
-# Uses https://github.com/AlexxIT/go2rtc (v1.0.1)
+# Uses https://github.com/AlexxIT/go2rtc (v1.1.1)
 go2rtc:
 
 # Optional: jsmpeg stream configuration for WebUI

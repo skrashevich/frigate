@@ -49,7 +49,7 @@ RUN --mount=type=tmpfs,target=/tmp  \
 FROM --platform=$BUILDPLATFORM wget AS go2rtc
 ARG TARGETARCH
 WORKDIR /rootfs/usr/local/go2rtc/bin
-RUN wget -qO go2rtc "https://github.com/AlexxIT/go2rtc/releases/download/v1.0.1/go2rtc_linux_${TARGETARCH}" \
+RUN wget -qO go2rtc "https://github.com/AlexxIT/go2rtc/releases/download/v1.1.1/go2rtc_linux_${TARGETARCH}" \
     && chmod +x go2rtc
 
 
