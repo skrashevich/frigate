@@ -269,7 +269,20 @@ class CameraWatchdog(threading.Thread):
                     self.logger.info("Waiting for ffmpeg to exit gracefully...")
                     self.ffmpeg_detect_process.communicate(timeout=30)
                 except sp.TimeoutExpired:
-                    self.logger.info("FFmpeg didnt exit. Force killing...")
+                    self.logger.info("FFmpeg did not exit. Force killing...")
+                    self.ffmpeg_detect_process.kill()
+                    self.ffmpeg_detect_process.communicate()
+            elif self.camera_fps.value >= (self.config.detect.fps + 10):
+                self.camera_fps.value = 0
+                self.logger.info(
+                    f"{self.camera_name} exceeded fps limit. Exiting ffmpeg..."
+                )
+                self.ffmpeg_detect_process.terminate()
+                try:
+                    self.logger.info("Waiting for ffmpeg to exit gracefully...")
+                    self.ffmpeg_detect_process.communicate(timeout=30)
+                except sp.TimeoutExpired:
+                    self.logger.info("FFmpeg did not exit. Force killing...")
                     self.ffmpeg_detect_process.kill()
                     self.ffmpeg_detect_process.communicate()
 
@@ -390,6 +403,9 @@ def capture_camera(name, config: CameraConfig, process_info):
 
     signal.signal(signal.SIGTERM, receiveSignal)
     signal.signal(signal.SIGINT, receiveSignal)
+
+    threading.current_thread().name = f"capture:{name}"
+    setproctitle(f"frigate.capture:{name}")
 
     frame_queue = process_info["frame_queue"]
     camera_watchdog = CameraWatchdog(
