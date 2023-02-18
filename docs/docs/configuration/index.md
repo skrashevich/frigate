@@ -148,7 +148,7 @@ birdseye:
 # More information about presets at https://docs.frigate.video/configuration/ffmpeg_presets
 ffmpeg:
   # Optional: global ffmpeg args (default: shown below)
-  global_args: -hide_banner -loglevel warning
+  global_args: -hide_banner -loglevel warning -threads 1
   # Optional: global hwaccel args (default: shown below)
   # NOTE: See hardware acceleration docs for your specific device
   hwaccel_args: []
@@ -157,7 +157,7 @@ ffmpeg:
   # Optional: global output args
   output_args:
     # Optional: output args for detect streams (default: shown below)
-    detect: -f rawvideo -pix_fmt yuv420p
+    detect: -threads 1 -f rawvideo -pix_fmt yuv420p
     # Optional: output args for record streams (default: shown below)
     record: preset-record-generic
     # Optional: output args for rtmp streams (default: shown below)
@@ -174,7 +174,6 @@ detect:
   # NOTE: Recommended value of 5. Ideally, try and reduce your FPS on the camera.
   fps: 5
   # Optional: enables detection for the camera (default: True)
-  # This value can be set via MQTT and will be updated in startup based on retained value
   enabled: True
   # Optional: Number of frames without a detection before Frigate considers an object to be gone. (default: 5x the frame rate)
   max_disappeared: 25
@@ -322,7 +321,6 @@ record:
 # NOTE: Can be overridden at the camera level
 snapshots:
   # Optional: Enable writing jpg snapshot to /media/frigate/clips (default: shown below)
-  # This value can be set via MQTT and will be updated in startup based on retained value
   enabled: False
   # Optional: save a clean PNG copy of the snapshot image (default: shown below)
   clean_copy: True
