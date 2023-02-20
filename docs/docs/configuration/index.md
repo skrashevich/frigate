@@ -105,7 +105,7 @@ model:
   # Valid values are nhwc or nchw (default: shown below)
   input_tensor: nhwc
   # Optional: Object detection model type, currently only used with the OpenVINO detector
-  # Valid values are ssd or yolox (default: shown below)
+  # Valid values are ssd, yolox, yolov5, or yolov8 (default: shown below)
   model_type: ssd
   # Optional: Label name modifications. These are merged into the standard labelmap.
   labelmap:
@@ -350,7 +350,7 @@ rtmp:
   enabled: False
 
 # Optional: Restream configuration
-# Uses https://github.com/AlexxIT/go2rtc (v1.1.2)
+# Uses https://github.com/AlexxIT/go2rtc (v1.2.0)
 go2rtc:
 
 # Optional: jsmpeg stream configuration for WebUI

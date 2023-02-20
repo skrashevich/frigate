@@ -49,7 +49,7 @@ RUN --mount=type=tmpfs,target=/tmp  \
 FROM --platform=$BUILDPLATFORM wget AS go2rtc
 ARG TARGETARCH
 WORKDIR /rootfs/usr/local/go2rtc/bin
-RUN wget -qO go2rtc "https://github.com/AlexxIT/go2rtc/releases/download/v1.1.2/go2rtc_linux_${TARGETARCH}" \
+RUN wget -qO go2rtc "https://github.com/AlexxIT/go2rtc/releases/download/v1.2.0/go2rtc_linux_${TARGETARCH}" \
     && chmod +x go2rtc
 
 
@@ -237,6 +237,10 @@ FROM deps AS devcontainer
 # Do not start the actual Frigate service on devcontainer as it will be started by VSCode
 # But start a fake service for simulating the logs
 ADD docker/fake_frigate_run /etc/s6-overlay/s6-rc.d/frigate/run
+
+# Create symbolic link to the frigate source code, as go2rtc's create_config.sh uses it
+RUN mkdir -p /opt/frigate \
+    && ln -svf /workspace/frigate/frigate /opt/frigate/frigate
 
 # Install Node 16
 RUN  apt-get update \
