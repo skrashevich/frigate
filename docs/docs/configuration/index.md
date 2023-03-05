@@ -19,7 +19,6 @@ cameras:
         - path: rtsp://viewer:{FRIGATE_RTSP_PASSWORD}@10.0.10.10:554/cam/realmonitor?channel=1&subtype=2
           roles:
             - detect
-            - restream
     detect:
       width: 1280
       height: 720
@@ -106,7 +105,7 @@ model:
   # Valid values are nhwc or nchw (default: shown below)
   input_tensor: nhwc
   # Optional: Object detection model type, currently only used with the OpenVINO detector
-  # Valid values are ssd or yolox (default: shown below)
+  # Valid values are ssd, yolox, yolov5, or yolov8 (default: shown below)
   model_type: ssd
   # Optional: Label name modifications. These are merged into the standard labelmap.
   labelmap:
@@ -149,7 +148,7 @@ birdseye:
 # More information about presets at https://docs.frigate.video/configuration/ffmpeg_presets
 ffmpeg:
   # Optional: global ffmpeg args (default: shown below)
-  global_args: -hide_banner -loglevel warning
+  global_args: -hide_banner -loglevel warning -threads 1
   # Optional: global hwaccel args (default: shown below)
   # NOTE: See hardware acceleration docs for your specific device
   hwaccel_args: []
@@ -158,7 +157,7 @@ ffmpeg:
   # Optional: global output args
   output_args:
     # Optional: output args for detect streams (default: shown below)
-    detect: -f rawvideo -pix_fmt yuv420p
+    detect: -threads 1 -f rawvideo -pix_fmt yuv420p
     # Optional: output args for record streams (default: shown below)
     record: preset-record-generic
     # Optional: output args for rtmp streams (default: shown below)
@@ -175,7 +174,6 @@ detect:
   # NOTE: Recommended value of 5. Ideally, try and reduce your FPS on the camera.
   fps: 5
   # Optional: enables detection for the camera (default: True)
-  # This value can be set via MQTT and will be updated in startup based on retained value
   enabled: True
   # Optional: Number of frames without a detection before Frigate considers an object to be gone. (default: 5x the frame rate)
   max_disappeared: 25
@@ -323,7 +321,6 @@ record:
 # NOTE: Can be overridden at the camera level
 snapshots:
   # Optional: Enable writing jpg snapshot to /media/frigate/clips (default: shown below)
-  # This value can be set via MQTT and will be updated in startup based on retained value
   enabled: False
   # Optional: save a clean PNG copy of the snapshot image (default: shown below)
   clean_copy: True
@@ -353,7 +350,7 @@ rtmp:
   enabled: False
 
 # Optional: Restream configuration
-# Uses https://github.com/AlexxIT/go2rtc (v1.1.1)
+# Uses https://github.com/AlexxIT/go2rtc (v1.2.0)
 go2rtc:
 
 # Optional: jsmpeg stream configuration for WebUI
@@ -408,12 +405,12 @@ cameras:
         # Required: the path to the stream
         # NOTE: path may include environment variables, which must begin with 'FRIGATE_' and be referenced in {}
         - path: rtsp://viewer:{FRIGATE_RTSP_PASSWORD}@10.0.10.10:554/cam/realmonitor?channel=1&subtype=2
-          # Required: list of roles for this stream. valid values are: detect,record,restream,rtmp
-          # NOTICE: In addition to assigning the record, restream, and rtmp roles,
+          # Required: list of roles for this stream. valid values are: detect,record,rtmp
+          # NOTICE: In addition to assigning the record and rtmp roles,
           # they must also be enabled in the camera config.
           roles:
             - detect
-            - restream
+            - record
             - rtmp
           # Optional: stream specific global args (default: inherit)
           # global_args:
