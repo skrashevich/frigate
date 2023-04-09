@@ -3,8 +3,8 @@
 set -euxo pipefail
 
 NGINX_VERSION="1.23.3"
-VOD_MODULE_VERSION="1.31"
-SECURE_TOKEN_MODULE_VERSION="openssl3-hmac-deprecation.zip" #1.5
+VOD_MODULE_VERSION="1.43"
+SECURE_TOKEN_MODULE_VERSION="openssl3-hmac-deprecation" #1.5
 RTMP_MODULE_VERSION="master" #1.2.2-r1
 
 cp /etc/apt/sources.list /etc/apt/sources.list.d/sources-src.list
@@ -43,13 +43,13 @@ EOF
 
 
 mkdir /tmp/nginx-secure-token-module
-wget https://github.com/kaltura/nginx-secure-token-module/archive/refs/heads/${SECURE_TOKEN_MODULE_VERSION}.zip
-tar -zxf ${SECURE_TOKEN_MODULE_VERSION}.zip -C /tmp/nginx-secure-token-module --strip-components=1
-rm ${SECURE_TOKEN_MODULE_VERSION}.zip
+wget https://github.com/kaltura/nginx-secure-token-module/archive/refs/heads/${SECURE_TOKEN_MODULE_VERSION}.tar.gz
+tar -zxf ${SECURE_TOKEN_MODULE_VERSION}.tar.gz -C /tmp/nginx-secure-token-module --strip-components=1
+rm ${SECURE_TOKEN_MODULE_VERSION}.tar.gz
 mkdir /tmp/nginx-rtmp-module
-wget -nv https://github.com/mannyamorim/nginx-rtmp-module/archive/refs/heads/${RTMP_MODULE_VERSION}.zip
-tar -zxf ${RTMP_MODULE_VERSION}.zip -C /tmp/nginx-rtmp-module --strip-components=1
-rm ${RTMP_MODULE_VERSION}.zip
+wget -nv https://github.com/mannyamorim/nginx-rtmp-module/archive/refs/heads/${RTMP_MODULE_VERSION}.tar.gz
+tar -zxf ${RTMP_MODULE_VERSION}.tar.gz -C /tmp/nginx-rtmp-module --strip-components=1
+rm ${RTMP_MODULE_VERSION}.tar.gz
 
 cd /tmp/nginx
 
