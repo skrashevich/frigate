@@ -113,10 +113,10 @@ FROM --platform=$BUILDPLATFORM wget AS models
 # Get model and labels
 ADD --link https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess_edgetpu.tflite edgetpu_model.tflite
 ADD --link https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess.tflite cpu_model.tflite 
-ADD --link https://raw.githubusercontent.com/google-coral/test_data/master/efficientdet_lite3_512_ptq_edgetpu.tflite /efficientdet_lite3_512_ptq_edgetpu.tflite
-ADD --link https://raw.githubusercontent.com/google-coral/test_data/master/coco_labels.txt /coco_labels.txt 
-ADD models /models
-RUN for i in person bicycle car motorcycle airplane bus train truck boat traffic light fire hydrant stop sign parking meter bench bird cat dog horse sheep cow elephant bear zebra giraffe backpack umbrella handbag tie suitcase frisbee skis snowboard sports ball kite baseball bat baseball glove skateboard surfboard tennis racket bottle wine glass cup fork knife spoon bowl banana apple sandwich orange broccoli carrot hot dog pizza donut cake chair couch potted plant bed dining table toilet tv laptop mouse remote keyboard cell phone microwave oven toaster sink refrigerator book clock vase scissors teddy bear hair drier toothbrush ; do echo $i; done > /yolov7_labels.txt
+ADD --link https://raw.githubusercontent.com/google-coral/test_data/master/efficientdet_lite3_512_ptq_edgetpu.tflite efficientdet_lite3_512_ptq_edgetpu.tflite
+ADD --link https://raw.githubusercontent.com/google-coral/test_data/master/coco_labels.txt coco_labels.txt 
+ADD models/yolov7_model.tflite yolov7_model.tflite
+ADD models/yolov7_labels.txt yolov7_labels.txt
 
 ADD labelmap.txt .
 # Copy OpenVino model
