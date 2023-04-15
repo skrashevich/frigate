@@ -108,15 +108,23 @@ RUN /bin/mkdir -p '/usr/local/lib' && \
 
 
 
-FROM --platform=$BUILDPLATFORM wget AS models
+FROM --platform=$BUILDPLATFORM ultralytics/ultralytics AS models
+# add coral repo
+#wget --quiet -O /usr/share/keyrings/google-edgetpu.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
+RUN echo "deb [trusted=yes] https://packages.cloud.google.com/apt coral-edgetpu-stable main" | tee /etc/apt/sources.list.d/coral-edgetpu.list
+RUN echo "libedgetpu1-max libedgetpu/accepted-eula select true" | debconf-set-selections
 
+RUN apt update && apt install -y sudo python3-tflite-runtime python3-pycoral edgetpu-compiler
+WORKDIR /rootfs
 # Get model and labels
 ADD --link https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess_edgetpu.tflite edgetpu_model.tflite
 ADD --link https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess.tflite cpu_model.tflite 
 ADD --link https://raw.githubusercontent.com/google-coral/test_data/master/efficientdet_lite3_512_ptq_edgetpu.tflite efficientdet_lite3_512_ptq_edgetpu.tflite
 ADD --link https://raw.githubusercontent.com/google-coral/test_data/master/coco_labels.txt coco_labels.txt 
-ADD models/yolov7_model.tflite yolov7_model.tflite
-ADD models/yolov7_labels.txt yolov7_labels.txt
+ADD --link https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt /tmp/yolov8.pt
+
+RUN cd /tmp && yolo export model=/tmp/yolov8.pt format=edgetpu int8=true
+RUN mv /tmp/yolov8_saved_model/yolov8_full_integer_quant_edgetpu.tflite /rootfs/yolov8_full_integer_quant_edgetpu.tflite 
 
 ADD labelmap.txt .
 # Copy OpenVino model
