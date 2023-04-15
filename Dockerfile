@@ -191,6 +191,7 @@ RUN mkdir -p /trt-wheels && pip3 wheel --wheel-dir=/trt-wheels -r requirements-t
 FROM --platform=$BUILDPLATFORM scratch AS deps-rootfs
 COPY --link --from=nginx /usr/local/nginx/ /usr/local/nginx/
 COPY --link --from=skrashevich/go2rtc:master /usr/local/bin/go2rtc /usr/local/go2rtc/bin/go2rtc
+COPY --link --from=libusb-build /usr/local/lib /usr/local/lib
 COPY --link --from=s6-overlay /rootfs/ /
 COPY --link --from=models /rootfs/ /
 ADD docker/rootfs/ /
@@ -297,7 +298,6 @@ COPY --link --from=rootfs / /
 
 # Frigate w/ TensorRT Support as separate image
 FROM frigate AS frigate-tensorrt
-COPY --link --from=libusb-build /usr/local/lib /usr/local/lib
 RUN --mount=type=bind,from=trt-wheels,source=/trt-wheels,target=/deps/trt-wheels \
     pip3 install -U /deps/trt-wheels/*.whl && \
     ln -s libnvrtc.so.11.2 /usr/local/lib/python3.9/dist-packages/nvidia/cuda_nvrtc/lib/libnvrtc.so && \
