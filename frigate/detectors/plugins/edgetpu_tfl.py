@@ -75,5 +75,6 @@ class EdgeTpuTfl(DetectionApi):
                 boxes[i][2],
                 boxes[i][3],
             ]
+            print(detections[i])
 
         return detections
