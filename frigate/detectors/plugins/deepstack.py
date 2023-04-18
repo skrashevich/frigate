@@ -73,7 +73,7 @@ class DeepStack(DetectionApi):
        
         for i, detection in enumerate(response_json["predictions"]):
             if detection["confidence"] < 0.4:
-                continue
+                break
             detections[i] = [
                 int(self.get_label_index(detection["label"])),
                 float(detection["confidence"]),

@@ -51,7 +51,7 @@ class CpuTfl(DetectionApi):
 
         for i in range(count):
             if scores[i] < 0.4 or i == 20:
-                continue
+                break
             detections[i] = [
                 class_ids[i],
                 float(scores[i]),
