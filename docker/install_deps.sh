@@ -32,7 +32,7 @@ apt-get -qq install --no-install-recommends --no-install-suggests -y \
 # btbn-ffmpeg -> amd64
 if [[ "${TARGETARCH}" == "amd64" ]]; then
     mkdir -p /usr/lib/btbn-ffmpeg
-    wget -qO btbn-ffmpeg.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2022-07-31-12-37/ffmpeg-n5.1-2-g915ef932a3-linux64-gpl-shared-5.1.tar.xz"
+    wget -qO btbn-ffmpeg.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n6.0-latest-linux64-gpl-shared-6.0.tar.xz"
     tar -xf btbn-ffmpeg.tar.xz -C /usr/lib/btbn-ffmpeg --strip-components 1
     cd ..
     rm -rf FFmpeg-Builds /usr/lib/btbn-ffmpeg/doc /usr/lib/btbn-ffmpeg/bin/ffplay
