@@ -30,6 +30,9 @@ class DeepStack(DetectionApi):
         self.api_key = detector_config.api_key
         self.labels = self.load_labels("/labelmap.txt")
 
+        self.h = detector_config.model.height
+        self.w = detector_config.model.width
+
     def load_labels(self, path, encoding="utf-8"):
         """Loads labels from file (with or without index numbers).
         Args:
@@ -74,10 +77,10 @@ class DeepStack(DetectionApi):
             detections[i] = [
                 int(self.get_label_index(detection["label"])),
                 float(detection["confidence"]),
-                detection["y_min"],
-                detection["x_min"],
-                detection["y_max"],
-                detection["x_max"],
+                detection["y_min"] / self.h,
+                detection["x_min"] / self.w,
+                detection["y_max"] / self.h,
+                detection["x_max"] / self.w,
             ]
             print(detections[i])
 
