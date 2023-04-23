@@ -55,8 +55,10 @@ class DeepStack(DetectionApi):
             return labels
     
     def get_label_index(self, label_value):
+        if label_value.lower() == 'truck':
+            label_value = 'car'
         for index, value in self.labels.items():
-            if value == label_value:
+            if value == label_value.lower():
                 return index
         return -1
     
