@@ -1,4 +1,3 @@
-import hashlib
 import logging
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union, Literal
@@ -50,7 +49,6 @@ class ModelConfig(BaseModel):
     )
     _merged_labelmap: Optional[Dict[int, str]] = PrivateAttr()
     _colormap: Dict[int, Tuple[int, int, int]] = PrivateAttr()
-    _model_hash: str = PrivateAttr()
 
     @property
     def merged_labelmap(self) -> Dict[int, str]:
@@ -60,10 +58,6 @@ class ModelConfig(BaseModel):
     def colormap(self) -> Dict[int, Tuple[int, int, int]]:
         return self._colormap
 
-    @property
-    def model_hash(self) -> str:
-        return self._model_hash
-
     def __init__(self, **config):
         super().__init__(**config)
 
@@ -72,13 +66,6 @@ class ModelConfig(BaseModel):
             **config.get("labelmap", {}),
         }
         self._colormap = {}
-
-    def compute_model_hash(self) -> None:
-        with open(self.path, "rb") as f:
-            file_hash = hashlib.md5()
-            while chunk := f.read(8192):
-                file_hash.update(chunk)
-        self._model_hash = file_hash.hexdigest()
 
     def create_colormap(self, enabled_labels: set[str]) -> None:
         """Get a list of colors for enabled labels."""

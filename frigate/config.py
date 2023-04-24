@@ -18,7 +18,6 @@ from frigate.const import (
     REGEX_CAMERA_NAME,
     YAML_EXT,
 )
-from frigate.detectors.detector_config import BaseDetectorConfig
 from frigate.util import (
     create_mask,
     deep_merge,
@@ -771,7 +770,7 @@ def verify_config_roles(camera_config: CameraConfig) -> None:
 
 def verify_valid_live_stream_name(
     frigate_config: FrigateConfig, camera_config: CameraConfig
-) -> ValueError | None:
+) -> None:
     """Verify that a restream exists to use for live view."""
     if (
         camera_config.live.stream_name
@@ -849,7 +848,7 @@ class FrigateConfig(FrigateBaseModel):
     model: ModelConfig = Field(
         default_factory=ModelConfig, title="Detection model configuration."
     )
-    detectors: Dict[str, BaseDetectorConfig] = Field(
+    detectors: Dict[str, DetectorConfig] = Field(
         default=DEFAULT_DETECTORS,
         title="Detector hardware configuration.",
     )
@@ -1032,15 +1031,7 @@ class FrigateConfig(FrigateBaseModel):
                 detector_config.model.dict(exclude_unset=True),
                 config.model.dict(exclude_unset=True),
             )
-
-            if not "path" in merged_model:
-                if detector_config.type == "cpu":
-                    merged_model["path"] = "/cpu_model.tflite"
-                elif detector_config.type == "edgetpu":
-                    merged_model["path"] = "/edgetpu_model.tflite"
-
             detector_config.model = ModelConfig.parse_obj(merged_model)
-            detector_config.model.compute_model_hash()
             config.detectors[key] = detector_config
 
         return config
