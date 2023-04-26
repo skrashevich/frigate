@@ -25,7 +25,7 @@ DetectorConfig = Annotated[
 
 class MetaDetectorConfig(BaseDetectorConfig):
     type: Literal[DETECTOR_KEY]
-    detectors: Dict[str, DetectorConfig] = Field(
+    detectors: Dict[str, BaseDetectorConfig] = Field(
         default={"cpu": {"type": "cpu"}},
         title="Detector hardware configuration.",
     )
@@ -72,7 +72,14 @@ class MetaDetector(DetectionApi):
                 meta_detector_config.model.dict(exclude_unset=True),
                 detector_config.model.dict(exclude_unset=True),
             )
+            if not "path" in merged_model:
+                if detector_config.type == "cpu":
+                    merged_model["path"] = "/cpu_model.tflite"
+                elif detector_config.type == "edgetpu":
+                    merged_model["path"] = "/edgetpu_model.tflite"
+
             detector_config.model = ModelConfig.parse_obj(merged_model)
+            detector_config.model.compute_model_hash()
             meta_detector_config.detectors[key] = detector_config
             self.detectors.append(self.create_detector(detector_config))
         self.meta_detector_config = meta_detector_config
