@@ -806,7 +806,7 @@ def get_cpu_stats() -> dict[str, dict]:
                     stats = f.readline().split()
                 utime = int(stats[13])
                 stime = int(stats[14])
-                cpu_usage = round((utime + stime) / os.sysconf("SC_CLK_TCK")) / os.cpu_count()
+                cpu_usage = round((utime + stime) / os.sysconf("SC_CLK_TCK"))
 
                 with open(f"/proc/{pid}/statm", "r") as f:
                     mem_stats = f.readline().split()
