@@ -56,7 +56,7 @@ export const formatUnixTimestampToDateTime = (unixTimestamp: number, config: Dat
 
     // use strftime_fmt if defined in config file
     if (strftime_fmt) {
-      const strftime_locale = strftime.timezone(getUTCOffset(date, timezone)).localizeByIdentifier(locale);
+      const strftime_locale = strftime.timezone(getUTCOffset(date, timezone || Intl.DateTimeFormat().resolvedOptions().timeZone)).localizeByIdentifier(locale);
       return strftime_locale(strftime_fmt, date);
     }
 
@@ -125,7 +125,7 @@ const getUTCOffset = (date: Date, timezone: string): number => {
   const utcDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60 * 1000));
   // locale of en-CA is required for proper locale format
   let iso = utcDate.toLocaleString('en-CA', { timeZone: timezone, hour12: false }).replace(', ', 'T');
-  iso += '.' + utcDate.getMilliseconds().toString().padStart(3, '0');
-  const target = new Date(iso + 'Z');
+  iso += `.${utcDate.getMilliseconds().toString().padStart(3, '0')}`;
+  const target = new Date(`${iso}Z`);
   return  (target.getTime() - utcDate.getTime()) / 60 / 1000;
 }

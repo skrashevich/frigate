@@ -3,7 +3,7 @@ id: index
 title: Configuration File
 ---
 
-For Home Assistant Addon installations, the config file needs to be in the root of your Home Assistant config directory (same location as `configuration.yaml`). It can be named `frigate.yml` or `frigate.yaml`, but if both files exist `frigate.yaml` will be preferred and `frigate.yml` will be ignored.
+For Home Assistant Addon installations, the config file needs to be in the root of your Home Assistant config directory (same location as `configuration.yaml`). It can be named `frigate.yaml` or `frigate.yml`, but if both files exist `frigate.yaml` will be preferred and `frigate.yml` will be ignored.
 
 For all other installation types, the config file should be mapped to `/config/config.yml` inside the container.
 
@@ -56,6 +56,14 @@ mqtt:
 ```
 
 ```yaml
+onvif:
+  host: 10.0.10.10
+  port: 8000
+  user: "{FRIGATE_RTSP_USER}"
+  password: "{FRIGATE_RTSP_PASSWORD}"
+```
+
+```yaml
 mqtt:
   # Optional: Enable mqtt server (default: shown below)
   enabled: True
@@ -105,7 +113,7 @@ detectors:
 # Optional: Database configuration
 database:
   # The path to store the SQLite DB (default: shown below)
-  path: /media/frigate/frigate.db
+  path: /config/frigate.db
 
 # Optional: model modifications
 model:
@@ -496,6 +504,25 @@ cameras:
       order: 0
       # Optional: Whether or not to show the camera in the Frigate UI (default: shown below)
       dashboard: True
+
+    # Optional: connect to ONVIF camera
+    # to enable PTZ controls.
+    onvif:
+      # Required: host of the camera being connected to.
+      host: 0.0.0.0
+      # Optional: ONVIF port for device (default: shown below).
+      port: 8000
+      # Optional: username for login.
+      # NOTE: Some devices require admin to access ONVIF.
+      user: admin
+      # Optional: password for login.
+      password: admin
+
+    # Optional: Configuration for how to sort the cameras in the Birdseye view.
+    birdseye:
+      # Optional: Adjust sort order of cameras in the Birdseye view. Larger numbers come later (default: shown below)
+      # By default the cameras are sorted alphabetically.
+      order: 0
 
 # Optional
 ui:

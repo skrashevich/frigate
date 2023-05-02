@@ -18,22 +18,31 @@ from frigate.comms.dispatcher import Communicator, Dispatcher
 from frigate.comms.mqtt import MqttClient
 from frigate.comms.ws import WebSocketClient
 from frigate.config import FrigateConfig
-from frigate.const import CACHE_DIR, CLIPS_DIR, RECORD_DIR
+from frigate.const import (
+    CACHE_DIR,
+    CLIPS_DIR,
+    CONFIG_DIR,
+    DEFAULT_DB_PATH,
+    MODEL_CACHE_DIR,
+    RECORD_DIR,
+)
 from frigate.object_detection import ObjectDetectProcess
 from frigate.events import EventCleanup, EventProcessor
 from frigate.http import create_app
 from frigate.log import log_process, root_configurer
-from frigate.models import Event, Recordings
+from frigate.models import Event, Recordings, Timeline
 from frigate.object_processing import TrackedObjectProcessor
 from frigate.output import output_frames
 from frigate.plus import PlusApi
-from frigate.record import RecordingCleanup, RecordingMaintainer
+from frigate.ptz import OnvifController
+from frigate.record.record import manage_recordings
 from frigate.stats import StatsEmitter, stats_init
 from frigate.storage import StorageMaintainer
+from frigate.timeline import TimelineProcessor
 from frigate.version import VERSION
 from frigate.video import capture_camera, track_camera
 from frigate.watchdog import FrigateWatchdog
-from frigate.types import CameraMetricsTypes
+from frigate.types import CameraMetricsTypes, RecordMetricsTypes
 
 logger = logging.getLogger(__name__)
 
@@ -48,13 +57,14 @@ class FrigateApp:
         self.log_queue: Queue = mp.Queue()
         self.plus_api = PlusApi()
         self.camera_metrics: dict[str, CameraMetricsTypes] = {}
+        self.record_metrics: dict[str, RecordMetricsTypes] = {}
 
     def set_environment_vars(self) -> None:
         for key, value in self.config.environment_vars.items():
             os.environ[key] = value
 
     def ensure_dirs(self) -> None:
-        for d in [RECORD_DIR, CLIPS_DIR, CACHE_DIR]:
+        for d in [CONFIG_DIR, RECORD_DIR, CLIPS_DIR, CACHE_DIR, MODEL_CACHE_DIR]:
             if not os.path.exists(d) and not os.path.islink(d):
                 logger.info(f"Creating directory: {d}")
                 os.makedirs(d)
@@ -78,7 +88,7 @@ class FrigateApp:
             config_file = config_file_yaml
 
         user_config = FrigateConfig.parse_file(config_file)
-        self.config = user_config.runtime_config
+        self.config = user_config.runtime_config(self.plus_api)
 
         for camera_name in self.config.cameras.keys():
             # create camera_metrics
@@ -106,6 +116,11 @@ class FrigateApp:
                 "frame_queue": mp.Queue(maxsize=2),
                 "capture_process": None,
                 "process": None,
+            }
+            self.record_metrics[camera_name] = {
+                "record_enabled": mp.Value(
+                    "i", self.config.cameras[camera_name].record.enabled
+                )
             }
 
     def set_log_levels(self) -> None:
@@ -135,9 +150,12 @@ class FrigateApp:
         # Queue for recordings info
         self.recordings_info_queue: Queue = mp.Queue()
 
+        # Queue for timeline events
+        self.timeline_queue: Queue = mp.Queue()
+
     def init_database(self) -> None:
         # Migrate DB location
-        old_db_path = os.path.join(CLIPS_DIR, "frigate.db")
+        old_db_path = DEFAULT_DB_PATH
         if not os.path.isfile(self.config.database.path) and os.path.isfile(
             old_db_path
         ):
@@ -153,8 +171,22 @@ class FrigateApp:
 
         migrate_db.close()
 
+    def init_recording_manager(self) -> None:
+        recording_process = mp.Process(
+            target=manage_recordings,
+            name="recording_manager",
+            args=(self.config, self.recordings_info_queue, self.record_metrics),
+        )
+        recording_process.daemon = True
+        self.recording_process = recording_process
+        recording_process.start()
+        logger.info(f"Recording process started: {recording_process.pid}")
+
+    def bind_database(self) -> None:
+        """Bind db to the main process."""
+        # NOTE: all db accessing processes need to be created before the db can be bound to the main process
         self.db = SqliteQueueDatabase(self.config.database.path)
-        models = [Event, Recordings]
+        models = [Event, Recordings, Timeline]
         self.db.bind(models)
 
     def init_stats(self) -> None:
@@ -169,8 +201,12 @@ class FrigateApp:
             self.stats_tracking,
             self.detected_frames_processor,
             self.storage_maintainer,
+            self.onvif_controller,
             self.plus_api,
         )
+
+    def init_onvif(self) -> None:
+        self.onvif_controller = OnvifController(self.config)
 
     def init_dispatcher(self) -> None:
         comms: list[Communicator] = []
@@ -179,7 +215,13 @@ class FrigateApp:
             comms.append(MqttClient(self.config))
 
         comms.append(WebSocketClient(self.config))
-        self.dispatcher = Dispatcher(self.config, self.camera_metrics, comms)
+        self.dispatcher = Dispatcher(
+            self.config,
+            self.onvif_controller,
+            self.camera_metrics,
+            self.record_metrics,
+            comms,
+        )
 
     def start_detectors(self) -> None:
         for name in self.config.cameras.keys():
@@ -286,12 +328,19 @@ class FrigateApp:
             capture_process.start()
             logger.info(f"Capture process started for {name}: {capture_process.pid}")
 
+    def start_timeline_processor(self) -> None:
+        self.timeline_processor = TimelineProcessor(
+            self.config, self.timeline_queue, self.stop_event
+        )
+        self.timeline_processor.start()
+
     def start_event_processor(self) -> None:
         self.event_processor = EventProcessor(
             self.config,
             self.camera_metrics,
             self.event_queue,
             self.event_processed_queue,
+            self.timeline_queue,
             self.stop_event,
         )
         self.event_processor.start()
@@ -299,16 +348,6 @@ class FrigateApp:
     def start_event_cleanup(self) -> None:
         self.event_cleanup = EventCleanup(self.config, self.stop_event)
         self.event_cleanup.start()
-
-    def start_recording_maintainer(self) -> None:
-        self.recording_maintainer = RecordingMaintainer(
-            self.config, self.recordings_info_queue, self.stop_event
-        )
-        self.recording_maintainer.start()
-
-    def start_recording_cleanup(self) -> None:
-        self.recording_cleanup = RecordingCleanup(self.config, self.stop_event)
-        self.recording_cleanup.start()
 
     def start_storage_maintainer(self) -> None:
         self.storage_maintainer = StorageMaintainer(self.config, self.stop_event)
@@ -347,6 +386,7 @@ class FrigateApp:
         self.init_logger()
         logger.info(f"Starting Frigate ({VERSION})")
         try:
+            self.ensure_dirs()
             try:
                 self.init_config()
             except Exception as e:
@@ -367,10 +407,12 @@ class FrigateApp:
                 self.log_process.terminate()
                 sys.exit(1)
             self.set_environment_vars()
-            self.ensure_dirs()
             self.set_log_levels()
             self.init_queues()
             self.init_database()
+            self.init_onvif()
+            self.init_recording_manager()
+            self.bind_database()
             self.init_dispatcher()
         except Exception as e:
             print(e)
@@ -384,14 +426,12 @@ class FrigateApp:
         self.start_storage_maintainer()
         self.init_stats()
         self.init_web_server()
+        self.start_timeline_processor()
         self.start_event_processor()
         self.start_event_cleanup()
-        self.start_recording_maintainer()
-        self.start_recording_cleanup()
         self.start_stats_emitter()
         self.start_watchdog()
         self.check_shm()
-        # self.zeroconf = broadcast_zeroconf(self.config.mqtt.client_id)
 
         def receiveSignal(signalNumber: int, frame: Optional[FrameType]) -> None:
             self.stop()
@@ -424,8 +464,6 @@ class FrigateApp:
         self.detected_frames_processor.join()
         self.event_processor.join()
         self.event_cleanup.join()
-        self.recording_maintainer.join()
-        self.recording_cleanup.join()
         self.stats_emitter.join()
         self.frigate_watchdog.join()
         self.db.stop()

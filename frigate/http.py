@@ -33,8 +33,10 @@ from playhouse.shortcuts import model_to_dict
 
 from frigate.config import FrigateConfig
 from frigate.const import CLIPS_DIR, MAX_SEGMENT_DURATION, RECORD_DIR
-from frigate.models import Event, Recordings
+from frigate.models import Event, Recordings, Timeline
 from frigate.object_processing import TrackedObject
+from frigate.plus import PlusApi
+from frigate.ptz import OnvifController
 from frigate.stats import stats_snapshot
 from frigate.util import (
     clean_camera_user_pass,
@@ -57,7 +59,8 @@ def create_app(
     stats_tracking,
     detected_frames_processor,
     storage_maintainer: StorageMaintainer,
-    plus_api,
+    onvif: OnvifController,
+    plus_api: PlusApi,
 ):
     app = Flask(__name__)
 
@@ -75,6 +78,7 @@ def create_app(
     app.stats_tracking = stats_tracking
     app.detected_frames_processor = detected_frames_processor
     app.storage_maintainer = storage_maintainer
+    app.onvif = onvif
     app.plus_api = plus_api
     app.camera_error_image = None
     app.hwaccel_errors = []
@@ -179,12 +183,20 @@ def send_to_plus(id):
             400,
         )
 
+    include_annotation = (
+        request.json.get("include_annotation") if request.is_json else None
+    )
+
     try:
         event = Event.get(Event.id == id)
     except DoesNotExist:
         message = f"Event {id} not found"
         logger.error(message)
         return make_response(jsonify({"success": False, "message": message}), 404)
+
+    # events from before the conversion to relative dimensions cant include annotations
+    if any(d > 1 for d in event.data["box"]):
+        include_annotation = None
 
     if event.end_time is None:
         logger.error(f"Unable to load clean png for in-progress event: {event.id}")
@@ -238,7 +250,98 @@ def send_to_plus(id):
     event.plus_id = plus_id
     event.save()
 
+    if not include_annotation is None:
+        region = event.data["region"]
+        box = event.data["box"]
+
+        try:
+            current_app.plus_api.add_annotation(
+                event.plus_id,
+                box,
+                event.label,
+            )
+        except Exception as ex:
+            logger.exception(ex)
+            return make_response(
+                jsonify({"success": False, "message": str(ex)}),
+                400,
+            )
+
     return make_response(jsonify({"success": True, "plus_id": plus_id}), 200)
+
+
+@bp.route("/events/<id>/false_positive", methods=("PUT",))
+def false_positive(id):
+    if not current_app.plus_api.is_active():
+        message = "PLUS_API_KEY environment variable is not set"
+        logger.error(message)
+        return make_response(
+            jsonify(
+                {
+                    "success": False,
+                    "message": message,
+                }
+            ),
+            400,
+        )
+
+    try:
+        event = Event.get(Event.id == id)
+    except DoesNotExist:
+        message = f"Event {id} not found"
+        logger.error(message)
+        return make_response(jsonify({"success": False, "message": message}), 404)
+
+    # events from before the conversion to relative dimensions cant include annotations
+    if any(d > 1 for d in event.data["box"]):
+        message = f"Events prior to 0.13 cannot be submitted as false positives"
+        logger.error(message)
+        return make_response(jsonify({"success": False, "message": message}), 400)
+
+    if event.false_positive:
+        message = f"False positive already submitted to Frigate+"
+        logger.error(message)
+        return make_response(jsonify({"success": False, "message": message}), 400)
+
+    if not event.plus_id:
+        plus_response = send_to_plus(id)
+        if plus_response.status_code != 200:
+            return plus_response
+        # need to refetch the event now that it has a plus_id
+        event = Event.get(Event.id == id)
+
+    region = event.data["region"]
+    box = event.data["box"]
+
+    # provide top score if score is unavailable
+    score = (
+        (event.data["top_score"] if event.data["top_score"] else event.top_score)
+        if event.data["score"] is None
+        else event.data["score"]
+    )
+
+    try:
+        current_app.plus_api.add_false_positive(
+            event.plus_id,
+            region,
+            box,
+            score,
+            event.label,
+            event.model_hash,
+            event.model_type,
+            event.detector_type,
+        )
+    except Exception as ex:
+        logger.exception(ex)
+        return make_response(
+            jsonify({"success": False, "message": str(ex)}),
+            400,
+        )
+
+    event.false_positive = True
+    event.save()
+
+    return make_response(jsonify({"success": True, "plus_id": event.plus_id}), 200)
 
 
 @bp.route("/events/<id>/retain", methods=("DELETE",))
@@ -412,6 +515,42 @@ def event_thumbnail(id, max_cache_age=2592000):
     else:
         response.headers["Cache-Control"] = "no-store"
     return response
+
+
+@bp.route("/timeline")
+def timeline():
+    camera = request.args.get("camera", "all")
+    source_id = request.args.get("source_id", type=str)
+    limit = request.args.get("limit", 100)
+
+    clauses = []
+
+    selected_columns = [
+        Timeline.timestamp,
+        Timeline.camera,
+        Timeline.source,
+        Timeline.source_id,
+        Timeline.class_type,
+        Timeline.data,
+    ]
+
+    if camera != "all":
+        clauses.append((Timeline.camera == camera))
+
+    if source_id:
+        clauses.append((Timeline.source_id == source_id))
+
+    if len(clauses) == 0:
+        clauses.append((True))
+
+    timeline = (
+        Timeline.select(*selected_columns)
+        .where(reduce(operator.and_, clauses))
+        .order_by(Timeline.timestamp.asc())
+        .limit(limit)
+    )
+
+    return jsonify([model_to_dict(t) for t in timeline])
 
 
 @bp.route("/<camera_name>/<label>/best.jpg")
@@ -618,6 +757,9 @@ def events():
         Event.retain_indefinitely,
         Event.sub_label,
         Event.top_score,
+        Event.false_positive,
+        Event.box,
+        Event.data,
     ]
 
     if camera != "all":
@@ -723,6 +865,11 @@ def config():
             cmd["cmd"] = clean_camera_user_pass(" ".join(cmd["cmd"]))
 
     config["plus"] = {"enabled": current_app.plus_api.is_active()}
+
+    for detector, detector_config in config["detectors"].items():
+        detector_config["model"][
+            "labelmap"
+        ] = current_app.frigate_config.model.merged_labelmap
 
     return jsonify(config)
 
@@ -859,6 +1006,14 @@ def mjpeg_feed(camera_name):
         return "Camera named {} not found".format(camera_name), 404
 
 
+@bp.route("/<camera_name>/ptz/info")
+def camera_ptz_info(camera_name):
+    if camera_name in current_app.frigate_config.cameras:
+        return jsonify(current_app.onvif.get_camera_info(camera_name))
+    else:
+        return "Camera named {} not found".format(camera_name), 404
+
+
 @bp.route("/<camera_name>/latest.jpg")
 def latest_frame(camera_name):
     draw_options = {
@@ -922,6 +1077,53 @@ def latest_frame(camera_name):
         return response
     else:
         return "Camera named {} not found".format(camera_name), 404
+
+
+@bp.route("/<camera_name>/recordings/<frame_time>/snapshot.png")
+def get_snapshot_from_recording(camera_name: str, frame_time: str):
+    if camera_name not in current_app.frigate_config.cameras:
+        return "Camera named {} not found".format(camera_name), 404
+
+    frame_time = float(frame_time)
+    recording_query = (
+        Recordings.select()
+        .where(
+            ((frame_time > Recordings.start_time) & (frame_time < Recordings.end_time))
+        )
+        .where(Recordings.camera == camera_name)
+    )
+
+    try:
+        recording: Recordings = recording_query.get()
+        time_in_segment = frame_time - recording.start_time
+
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "warning",
+            "-ss",
+            f"00:00:{time_in_segment}",
+            "-i",
+            recording.path,
+            "-frames:v",
+            "1",
+            "-c:v",
+            "png",
+            "-f",
+            "image2pipe",
+            "-",
+        ]
+
+        process = sp.run(
+            ffmpeg_cmd,
+            capture_output=True,
+        )
+        response = make_response(process.stdout)
+        response.headers["Content-Type"] = "image/png"
+        return response
+    except DoesNotExist:
+        return "Recording not found for {} at {}".format(camera_name, frame_time), 404
 
 
 @bp.route("/recordings/storage", methods=["GET"])

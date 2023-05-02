@@ -13,11 +13,13 @@ from pydantic import BaseModel, Extra, Field, validator, parse_obj_as
 from pydantic.fields import PrivateAttr
 
 from frigate.const import (
-    BASE_DIR,
     CACHE_DIR,
+    DEFAULT_DB_PATH,
     REGEX_CAMERA_NAME,
     YAML_EXT,
 )
+from frigate.detectors.detector_config import BaseDetectorConfig
+from frigate.plus import PlusApi
 from frigate.util import (
     create_mask,
     deep_merge,
@@ -122,6 +124,13 @@ class MqttConfig(FrigateBaseModel):
         if (v is None) != (values["user"] is None):
             raise ValueError("Password must be provided with username.")
         return v
+
+
+class OnvifConfig(FrigateBaseModel):
+    host: str = Field(default="", title="Onvif Host")
+    port: int = Field(default=8000, title="Onvif Port")
+    user: Optional[str] = Field(title="Onvif Username")
+    password: Optional[str] = Field(title="Onvif Password")
 
 
 class RetainModeEnum(str, Enum):
@@ -261,6 +270,9 @@ class DetectConfig(FrigateBaseModel):
         default_factory=StationaryConfig,
         title="Stationary objects config.",
     )
+    annotation_offset: int = Field(
+        default=0, title="Milliseconds to offset detect annotations by."
+    )
 
 
 class FilterConfig(FrigateBaseModel):
@@ -388,6 +400,7 @@ class BirdseyeConfig(FrigateBaseModel):
 # uses BaseModel because some global attributes are not available at the camera level
 class BirdseyeCameraConfig(BaseModel):
     enabled: bool = Field(default=True, title="Enable birdseye view for camera.")
+    order: int = Field(default=0, title="Position of the camera in the birdseye view.")
     mode: BirdseyeModeEnum = Field(
         default=BirdseyeModeEnum.objects, title="Tracking mode for camera."
     )
@@ -606,6 +619,9 @@ class CameraConfig(FrigateBaseModel):
     detect: DetectConfig = Field(
         default_factory=DetectConfig, title="Object detection configuration."
     )
+    onvif: OnvifConfig = Field(
+        default_factory=OnvifConfig, title="Camera Onvif Configuration."
+    )
     ui: CameraUiConfig = Field(
         default_factory=CameraUiConfig, title="Camera UI Modifications."
     )
@@ -731,9 +747,7 @@ class CameraConfig(FrigateBaseModel):
 
 
 class DatabaseConfig(FrigateBaseModel):
-    path: str = Field(
-        default=os.path.join(BASE_DIR, "frigate.db"), title="Database path."
-    )
+    path: str = Field(default=DEFAULT_DB_PATH, title="Database path.")
 
 
 class LogLevelEnum(str, Enum):
@@ -772,7 +786,7 @@ def verify_config_roles(camera_config: CameraConfig) -> None:
 
 def verify_valid_live_stream_name(
     frigate_config: FrigateConfig, camera_config: CameraConfig
-) -> None:
+) -> ValueError | None:
     """Verify that a restream exists to use for live view."""
     if (
         camera_config.live.stream_name
@@ -850,7 +864,7 @@ class FrigateConfig(FrigateBaseModel):
     model: ModelConfig = Field(
         default_factory=ModelConfig, title="Detection model configuration."
     )
-    detectors: Dict[str, DetectorConfig] = Field(
+    detectors: Dict[str, BaseDetectorConfig] = Field(
         default=DEFAULT_DETECTORS,
         title="Detector hardware configuration.",
     )
@@ -893,8 +907,7 @@ class FrigateConfig(FrigateBaseModel):
         title="Global timestamp style configuration.",
     )
 
-    @property
-    def runtime_config(self) -> FrigateConfig:
+    def runtime_config(self, plus_api: PlusApi = None) -> FrigateConfig:
         """Merge camera config with globals."""
         config = self.copy(deep=True)
 
@@ -939,6 +952,15 @@ class FrigateConfig(FrigateBaseModel):
             # FFMPEG input substitution
             for input in camera_config.ffmpeg.inputs:
                 input.path = input.path.format(**FRIGATE_ENV_VARS)
+
+            # ONVIF substitution
+            if camera_config.onvif.user or camera_config.onvif.password:
+                camera_config.onvif.user = camera_config.onvif.user.format(
+                    **FRIGATE_ENV_VARS
+                )
+                camera_config.onvif.password = camera_config.onvif.password.format(
+                    **FRIGATE_ENV_VARS
+                )
 
             # Add default filters
             object_keys = camera_config.objects.track
@@ -1009,6 +1031,7 @@ class FrigateConfig(FrigateBaseModel):
             enabled_labels.update(camera.objects.track)
 
         config.model.create_colormap(sorted(enabled_labels))
+        config.model.check_and_load_plus_model(plus_api)
 
         for key, detector in config.detectors.items():
             detector_config: DetectorConfig = parse_obj_as(DetectorConfig, detector)
@@ -1033,7 +1056,18 @@ class FrigateConfig(FrigateBaseModel):
                 detector_config.model.dict(exclude_unset=True),
                 config.model.dict(exclude_unset=True),
             )
+
+            if not "path" in merged_model:
+                if detector_config.type == "cpu":
+                    merged_model["path"] = "/cpu_model.tflite"
+                elif detector_config.type == "edgetpu":
+                    merged_model["path"] = "/edgetpu_model.tflite"
+
             detector_config.model = ModelConfig.parse_obj(merged_model)
+            detector_config.model.check_and_load_plus_model(
+                plus_api, detector_config.type
+            )
+            detector_config.model.compute_model_hash()
             config.detectors[key] = detector_config
 
         return config

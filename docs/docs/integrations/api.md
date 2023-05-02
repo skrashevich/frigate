@@ -168,6 +168,16 @@ Events from the database. Accepts the following query string parameters:
 | `include_thumbnails` | int  | Include thumbnails in the response (0 or 1)   |
 | `in_progress`        | int  | Limit to events in progress (0 or 1)          |
 
+### `GET /api/timeline`
+
+Timeline of key moments of an event(s) from the database. Accepts the following query string parameters:
+
+| param       | Type | Description                         |
+| ----------- | ---- | ----------------------------------- |
+| `camera`    | str  | Name of camera                      |
+| `source_id` | str  | ID of tracked object                |
+| `limit`     | int  | Limit the number of events returned |
+
 ### `GET /api/events/summary`
 
 Returns summary data for events in the database. Used by the Home Assistant integration.
@@ -187,6 +197,14 @@ Sets retain to true for the event id.
 ### `POST /api/events/<id>/plus`
 
 Submits the snapshot of the event to Frigate+ for labeling.
+
+| param                | Type | Description                        |
+| -------------------- | ---- | ---------------------------------- |
+| `include_annotation` | int  | Submit annotation to Frigate+ too. |
+
+### `PUT /api/events/<id>/false_positive`
+
+Submits the snapshot of the event to Frigate+ for labeling and adds the detection as a false positive.
 
 ### `DELETE /api/events/<id>/retain`
 
@@ -233,6 +251,10 @@ Accepts the following query string parameters, but they are only applied when an
 
 Returns the snapshot image from the latest event for the given camera and label combo. Using `any` as the label will return the latest thumbnail regardless of type.
 
+### `GET /api/<camera_name>/recording/<frame_time>/snapshot.png`
+
+Returns the snapshot image from the specific point in that cameras recordings.
+
 ### `GET /clips/<camera>-<id>.jpg`
 
 JPG snapshot for the given camera and event id.
@@ -269,3 +291,7 @@ Get ffprobe output for camera feed paths.
 | param   | Type   | Description                        |
 | ------- | ------ | ---------------------------------- |
 | `paths` | string | `,` separated list of camera paths |
+
+### `GET /api/<camera_name>/ptz/info`
+
+Get PTZ info for the camera.

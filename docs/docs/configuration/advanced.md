@@ -24,7 +24,6 @@ Examples of available modules are:
 - `frigate.app`
 - `frigate.mqtt`
 - `frigate.object_detection`
-- `frigate.zeroconf`
 - `detector.<detector_name>`
 - `watchdog.<camera_name>`
 - `ffmpeg.<camera_name>.<sorted_roles>` NOTE: All FFmpeg logs are sent as `error` level.
@@ -42,7 +41,7 @@ environment_vars:
 
 ### `database`
 
-Event and recording information is managed in a sqlite database at `/media/frigate/frigate.db`. If that database is deleted, recordings will be orphaned and will need to be cleaned up manually. They also won't show up in the Media Browser within Home Assistant.
+Event and recording information is managed in a sqlite database at `/config/frigate.db`. If that database is deleted, recordings will be orphaned and will need to be cleaned up manually. They also won't show up in the Media Browser within Home Assistant.
 
 If you are storing your database on a network share (SMB, NFS, etc), you may get a `database is locked` error message on startup. You can customize the location of the database in the config if necessary.
 
