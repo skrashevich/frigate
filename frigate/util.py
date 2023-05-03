@@ -926,13 +926,12 @@ def get_intel_gpu_stats() -> dict[str, str]:
         return results
 
 
-def try_get_info(f, h, default='N/A'):
+def try_get_info(f, h, default="N/A"):
     try:
         v = f(h)
     except nvml.NVMLError_NotSupported:
         v = default
     return v
-
 
 
 def get_nvidia_gpu_stats() -> dict[str, str]:
@@ -943,18 +942,21 @@ def get_nvidia_gpu_stats() -> dict[str, str]:
         handle = nvml.nvmlDeviceGetHandleByIndex(i)
         meminfo = nvml.nvmlDeviceGetMemoryInfo(handle)
         util = try_get_info(nvml.nvmlDeviceGetUtilizationRates, handle)
-        if util != 'N/A':
+        if util != "N/A":
             gpu_util = util.gpu
         else:
             gpu_util = 0
+        if meminfo != "N/A":
+            gpu_mem_util = meminfo.used / meminfo.total * 100
+        else:
+            gpu_mem_util = -1
         results[i] = {
             "name": nvml.nvmlDeviceGetName(handle),
             "gpu": gpu_util,
-            "mem": meminfo.used / meminfo.total * 100
+            "mem": gpu_mem_util,
         }
 
         return results
-
 
 
 def ffprobe_stream(path: str) -> sp.CompletedProcess:
