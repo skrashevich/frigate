@@ -14,7 +14,7 @@ from frigate.comms.dispatcher import Dispatcher
 from frigate.config import FrigateConfig
 from frigate.const import DRIVER_AMD, DRIVER_ENV_VAR, RECORD_DIR, CLIPS_DIR, CACHE_DIR
 from frigate.types import StatsTrackingTypes, CameraMetricsTypes
-from frigate.util import get_amd_gpu_stats, get_intel_gpu_stats, get_nvidia_gpu_stats, get_nvidia_gpu_procs
+from frigate.util import get_amd_gpu_stats, get_intel_gpu_stats, get_nvidia_gpu_stats
 from frigate.version import VERSION
 from frigate.util import get_cpu_stats
 from frigate.object_detection import ObjectDetectProcess
@@ -151,7 +151,6 @@ async def set_gpu_stats(
         elif "cuvid" in args or "nvidia" in args:
             # nvidia GPU
             nvidia_usage = get_nvidia_gpu_stats()
-            nvidia_procs = get_nvidia_gpu_procs()
 
             if nvidia_usage:
                 name = nvidia_usage["name"]
@@ -196,7 +195,6 @@ async def set_gpu_stats(
 
     if stats:
         all_stats["gpu_usages"] = stats
-        all_stats["gpu_procs"] = nvidia_procs
 
 
 def stats_snapshot(

@@ -27,7 +27,6 @@ export default function System() {
   const {
     cpu_usages,
     gpu_usages,
-    gpu_procs,
     detectors,
     service = {},
     detection_fps: _,
@@ -37,7 +36,6 @@ export default function System() {
 
   const detectorNames = Object.keys(detectors || emptyObject);
   const gpuNames = Object.keys(gpu_usages || emptyObject);
-  const gpuProcs = Object.keys(gpu_procs || emptyObject);
   const cameraNames = Object.keys(cameras || emptyObject);
   const processesNames = Object.keys(processes || emptyObject);
 
@@ -341,7 +339,6 @@ export default function System() {
                           <Th>FPS</Th>
                           <Th>CPU %</Th>
                           <Th>Memory %</Th>
-                          { gpu_procs?.length ? <Th>GPU Memory %</Th> : null }
                         </Tr>
                       </Thead>
                       <Tbody>
@@ -351,7 +348,6 @@ export default function System() {
                           <Td>{cameras[camera]['camera_fps'] || '- '}</Td>
                           <Td>{cpu_usages[cameras[camera]['ffmpeg_pid']]?.['cpu'] || '- '}%</Td>
                           <Td>{cpu_usages[cameras[camera]['ffmpeg_pid']]?.['mem'] || '- '}%</Td>
-                          { gpu_procs?.length ? <Td>gpu_procs[cameras[camera]['ffmpeg_pid']]?.['mem'] || '- '%</Td> : null }
                         </Tr>
                         <Tr key="capture" index="1">
                           <Td>Capture</Td>
@@ -359,7 +355,6 @@ export default function System() {
                           <Td>{cameras[camera]['process_fps'] || '- '}</Td>
                           <Td>{cpu_usages[cameras[camera]['capture_pid']]?.['cpu'] || '- '}%</Td>
                           <Td>{cpu_usages[cameras[camera]['capture_pid']]?.['mem'] || '- '}%</Td>
-                          { gpu_procs?.length ? <Td>-&nbsp;</Td> :null }
                         </Tr>
                         <Tr key="detect" index="2">
                           <Td>Detect</Td>
@@ -380,7 +375,6 @@ export default function System() {
 
                           <Td>{cpu_usages[cameras[camera]['pid']]?.['cpu'] || '- '}%</Td>
                           <Td>{cpu_usages[cameras[camera]['pid']]?.['mem'] || '- '}%</Td>
-                          { gpu_procs?.length ? <Td>-&nbsp;</Td> :null }
                         </Tr>
                       </Tbody>
                     </Table>
