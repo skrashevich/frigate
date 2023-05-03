@@ -823,7 +823,6 @@ def get_cpu_stats() -> dict[str, dict]:
             process_usage_sec = process_utime_sec + process_stime_sec
             cpu_average_usage = process_usage_sec * 100 // process_elapsed_sec
 
-
             with open(f"/proc/{pid}/statm", "r") as f:
                 mem_stats = f.readline().split()
             mem_res = int(mem_stats[1]) * os.sysconf("SC_PAGE_SIZE") / 1024
