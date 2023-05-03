@@ -60,5 +60,5 @@ jobs:
           ghcr.io/${{ github.actor }}/${{ matrix.target }}:${{ github.ref_name }}-${{ env.SHORT_SHA }}
           ghcr.io/${{ github.actor }}/${{ matrix.target }}:${{ github.ref_name }}
         target: ${{ matrix.target }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-from: type=gha,scope=${{ matrix.target }}
+        cache-to: type=gha,scope=${{ matrix.target }}
