@@ -963,6 +963,51 @@ def get_nvidia_gpu_stats() -> dict[str, str]:
         }
 
         return results
+    
+def get_nvidia_gpu_procs() -> dict[str, str]:
+    """Get stats using nvidia-smi."""
+    nvidia_smi_command = [
+        "nvidia-smi",
+        "--query-compute-apps=pid,name,used_memory",
+        "--format=csv,noheader",
+    ]
+
+    if (
+        "CUDA_VISIBLE_DEVICES" in os.environ
+        and os.environ["CUDA_VISIBLE_DEVICES"].isdigit()
+    ):
+        nvidia_smi_command.extend(["--id", os.environ["CUDA_VISIBLE_DEVICES"]])
+    elif (
+        "NVIDIA_VISIBLE_DEVICES" in os.environ
+        and os.environ["NVIDIA_VISIBLE_DEVICES"].isdigit()
+    ):
+        nvidia_smi_command.extend(["--id", os.environ["NVIDIA_VISIBLE_DEVICES"]])
+
+    p = sp.run(
+        nvidia_smi_command,
+        encoding="ascii",
+        capture_output=True,
+    )
+
+    results = {}
+
+    if p.returncode != 0:
+        logger.error(f"Unable to poll nvidia GPU processes stats: {p.stderr}")
+        return results
+    else:
+        lines = p.stdout.split("\n")
+        for line in lines:
+            usages = line.strip().split(",")
+            if usages.length < 3:
+                continue
+            memory = f"{round(float(usages[2].replace(' MiB', '').strip()))}"
+            pid = int(usages[0])
+            results[pid] = {
+                "name": usages[1].strip(),
+                "mem": memory,
+            }
+
+    return results
 
 
 def ffprobe_stream(path: str) -> sp.CompletedProcess:
