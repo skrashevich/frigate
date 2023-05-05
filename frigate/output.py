@@ -421,6 +421,7 @@ class BirdsEyeFrameManager:
             return True
         return False
 
+
 def output_frames(config: FrigateConfig, video_output_queue):
     threading.current_thread().name = f"output"
     setproctitle(f"frigate.output")
