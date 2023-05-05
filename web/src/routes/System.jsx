@@ -39,6 +39,13 @@ export default function System() {
   const cameraNames = Object.keys(cameras || emptyObject);
   const processesNames = Object.keys(processes || emptyObject);
 
+  const go2rtc = axios.get('go2rtc');
+  if (go2rtc.status === 200) {
+    setState({ ...state, go2rtc: go2rtc.data });
+  } else {
+    setState({ ...state, go2rtc: {} });
+  }
+
   const onHandleFfprobe = async (camera, e) => {
     if (e) {
       e.stopPropagation();
@@ -93,14 +100,16 @@ export default function System() {
           System <span className="text-sm">{service.version}</span>
         </Heading>
         {config && (
-          <Link
-            className="p-1 text-blue-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-            href="/live/webrtc/"
-          >
-            go2rtc dashboard
-          </Link>
+          <span class="p-1">go2rtc {state.go2rtc.version != '' ? ( `${state.go2rtc.version}&nbsp;` ) : null }
+            <Link
+              className="text-blue-500 hover:underline"
+              target="_blank"
+              rel="noopener noreferrer"
+              href="/live/webrtc/"
+            >
+              dashboard
+            </Link>
+          </span>
         )}
       </div>
 
