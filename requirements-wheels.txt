@@ -3,6 +3,7 @@ Flask == 2.3.*
 imutils == 0.5.*
 matplotlib == 3.7.*
 mypy == 0.942
+numba
 numpy == 1.23.*
 onvif_zeep == 0.2.12
 opencv-python-headless == 4.5.5.*

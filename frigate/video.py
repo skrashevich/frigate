@@ -34,7 +34,7 @@ from frigate.util import (
     yuv_region_2_bgr,
     yuv_region_2_yuv,
 )
-
+from numba import jit
 logger = logging.getLogger(__name__)
 
 
@@ -573,7 +573,7 @@ def detect(
         detections.append(det)
     return detections
 
-
+@jit
 def process_frames(
     camera_name: str,
     frame_queue: mp.Queue,
