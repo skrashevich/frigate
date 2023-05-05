@@ -39,12 +39,7 @@ export default function System() {
   const cameraNames = Object.keys(cameras || emptyObject);
   const processesNames = Object.keys(processes || emptyObject);
 
-  const go2rtc = axios.get('go2rtc');
-  if (go2rtc.status === 200) {
-    setState({ ...state, go2rtc: go2rtc.data });
-  } else {
-    setState({ ...state, go2rtc: {} });
-  }
+  const { data: go2rtc } = useSWR('go2rtc');
 
   const onHandleFfprobe = async (camera, e) => {
     if (e) {
@@ -100,7 +95,7 @@ export default function System() {
           System <span className="text-sm">{service.version}</span>
         </Heading>
         {config && (
-          <span class="p-1">go2rtc {state.go2rtc.version != '' ? ( `${state.go2rtc.version}&nbsp;` ) : null }
+          <span class="p-1">go2rtc {go2rtc && ( `${go2rtc.version} ` ) }
             <Link
               className="text-blue-500 hover:underline"
               target="_blank"
