@@ -38,12 +38,6 @@ EOT
 
 WORKDIR /rootfs
 
-FROM base_amd64 as vainfo
-ARG TARGETARCH
-ADD https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v5.1.3-1/jellyfin-ffmpeg5_5.1.3-1-bullseye_${ARGETARCH}.deb /
-RUN apt install -y --no-install-recommends /jellyfin-ffmpeg5_5.1.3-1-${ARGETARCH}.deb
-
-
 FROM --platform=$BUILDPLATFORM debian:11 AS nginx
 ARG DEBIAN_FRONTEND
 ARG TARGETARCH
@@ -284,7 +278,6 @@ WORKDIR /opt/frigate/
 ADD frigate frigate/
 ADD migrations migrations/
 COPY --link --from=web-build /work/dist/ web/
-COPY --link --from=vainfo /usr/lib/jellyfin-ffmpeg/vainfo /usr/bin/vainfo
 
 # Frigate final container
 FROM deps AS frigate
