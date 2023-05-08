@@ -114,6 +114,7 @@ FROM --platform=$BUILDPLATFORM wget AS models
 ADD --link https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess_edgetpu.tflite edgetpu_model.tflite
 ADD --link https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess.tflite cpu_model.tflite 
 ADD --link https://raw.githubusercontent.com/google-coral/test_data/master/efficientdet_lite3_512_ptq_edgetpu.tflite /efficientdet_lite3_512_ptq_edgetpu.tflite
+ADD --link https://storage.googleapis.com/mediapipe-tasks/object_detector/efficientdet_lite2_fp32.tflite /efficientdet_lite2_fp32.tflite
 ADD --link https://raw.githubusercontent.com/google-coral/test_data/master/coco_labels.txt /coco_labels.txt 
 
 ADD labelmap.txt .
@@ -154,6 +155,7 @@ RUN apt-get -qq update \
     gfortran openexr libatlas-base-dev libssl-dev\
     libtbb2 libtbb-dev libdc1394-22-dev libopenexr-dev \
     libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev \
+    libgl1 \
     # scipy dependencies
     gcc gfortran libopenblas-dev liblapack-dev && \
     apt-get clean
