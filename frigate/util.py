@@ -838,7 +838,7 @@ def get_cpu_stats() -> dict[str, dict]:
                 "cpu": str(cpu_percent),
                 "cpu_average": str(round(cpu_average_usage, 2)),
                 "mem": f"{mem_pct}",
-                "cmdline": ' '.join(cmdline),
+                "cmdline": " ".join(cmdline),
             }
         except:
             continue
