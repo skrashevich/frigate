@@ -53,6 +53,12 @@ WORKDIR /rootfs/usr/local/go2rtc/bin
 RUN wget -qO go2rtc "https://github.com/AlexxIT/go2rtc/releases/download/v1.5.0/go2rtc_linux_${TARGETARCH}" \
     && chmod +x go2rtc
 
+FROM --platform=$BUILDPLATFORM node:16 AS docs-build
+ADD --link ./docs /docs
+ADD --link labelmap.txt /
+WORKDIR /docs
+RUN npm install
+RUN npm run build
 
 ####
 #
@@ -280,6 +286,7 @@ WORKDIR /opt/frigate/
 ADD frigate frigate/
 ADD migrations migrations/
 COPY --link --from=web-build /work/dist/ web/
+COPY --link --from=docs-build /docs/build/ web/docs/
 
 # Frigate final container
 FROM deps AS frigate
