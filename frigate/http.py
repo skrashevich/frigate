@@ -198,7 +198,7 @@ def send_to_plus(id):
         return make_response(jsonify({"success": False, "message": message}), 404)
 
     # events from before the conversion to relative dimensions cant include annotations
-    if any(d > 1 for d in event.box):
+    if event.data.get("box") is None:
         include_annotation = None
 
     if event.end_time is None:
@@ -254,8 +254,7 @@ def send_to_plus(id):
     event.save()
 
     if not include_annotation is None:
-        region = event.region
-        box = event.box
+        box = event.data["box"]
 
         try:
             current_app.plus_api.add_annotation(
@@ -296,7 +295,7 @@ def false_positive(id):
         return make_response(jsonify({"success": False, "message": message}), 404)
 
     # events from before the conversion to relative dimensions cant include annotations
-    if any(d > 1 for d in event.box):
+    if event.data.get("box") is None:
         message = f"Events prior to 0.13 cannot be submitted as false positives"
         logger.error(message)
         return make_response(jsonify({"success": False, "message": message}), 400)
@@ -951,6 +950,7 @@ def config_save():
     # Validate the config schema
     try:
         new_yaml = FrigateConfig.parse_raw(new_config)
+        check_runtime = new_yaml.runtime_config
     except Exception as e:
         return make_response(
             jsonify(
