@@ -346,6 +346,7 @@ class RecordingMaintainer(threading.Thread):
                         Path(file_path).unlink(missing_ok=True)
                         file_path = s3path
                         storage = "s3"
+                        logger.debug(f"Copied {file_path} to S3 storage")
                     else:
                         logger.error(
                             f"Unable to upload recording segment {file_path} to s3, fallback to local"

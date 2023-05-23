@@ -62,6 +62,8 @@ class StorageS3:
 
             self.s3_bucket = self.config.storage.s3.bucket_name
             self.s3_path = self.config.storage.s3.path
+        else:
+            logger.debug("Strange thing: StorageS3 invokated, but disabled")
 
     def upload_file_to_s3(self, file_path) -> str:
         try:
