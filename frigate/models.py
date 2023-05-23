@@ -67,3 +67,8 @@ class Recordings(Model):  # type: ignore[misc]
     objects = IntegerField(null=True)
     segment_size = FloatField(default=0)  # this should be stored as MB
     storage = CharField(max_length=20)
+
+
+# Used for temporary table in record/cleanup.py
+class RecordingsToDelete(Model):  # type: ignore[misc]
+    id = CharField(null=False, primary_key=False, max_length=30)
