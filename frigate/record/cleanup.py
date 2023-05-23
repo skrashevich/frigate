@@ -217,8 +217,9 @@ class RecordingCleanup(threading.Thread):
         for root, _, files in os.walk(RECORD_DIR):
             for file in files:
                 file_path = os.path.join(root, file)
-                if os.path.getmtime(file_path) < oldest_timestamp:
-                    files_to_check.append(file_path)
+                if os.path.exists(file_path):
+                    if os.path.getmtime(file_path) < oldest_timestamp:
+                        files_to_check.append(file_path)
 
         for f in files_to_check:
             p = Path(f)
