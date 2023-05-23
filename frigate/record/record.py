@@ -17,6 +17,7 @@ from frigate.record.cleanup import RecordingCleanup
 from frigate.record.maintainer import RecordingMaintainer
 from frigate.types import RecordMetricsTypes
 from frigate.util import listen
+from frigate.database import TimedSqliteQueueDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def manage_recordings(
     setproctitle("frigate.recording_manager")
     listen()
 
-    db = SqliteQueueDatabase(config.database.path)
+    db = TimedSqliteQueueDatabase(config.database.path)
     models = [Event, Recordings, Timeline, RecordingsToDelete]
     db.bind(models)
 

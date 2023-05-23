@@ -14,6 +14,7 @@ import traceback
 from peewee_migrate import Router
 from playhouse.sqlite_ext import SqliteExtDatabase
 from playhouse.sqliteq import SqliteQueueDatabase
+from frigate.database import TimedSqliteQueueDatabase
 
 from frigate.comms.dispatcher import Communicator, Dispatcher
 from frigate.comms.mqtt import MqttClient
@@ -197,7 +198,7 @@ class FrigateApp:
     def bind_database(self) -> None:
         """Bind db to the main process."""
         # NOTE: all db accessing processes need to be created before the db can be bound to the main process
-        self.db = SqliteQueueDatabase(self.config.database.path)
+        self.db = TimedSqliteQueueDatabase(self.config.database.path)
         models = [Event, Recordings, Timeline]
         self.db.bind(models)
 
