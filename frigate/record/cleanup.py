@@ -5,12 +5,12 @@ import itertools
 import logging
 import os
 import threading
+from multiprocessing.synchronize import Event as MpEvent
 from pathlib import Path
 
 from peewee import chunked, DoesNotExist, DatabaseError
-from multiprocessing.synchronize import Event as MpEvent
 
-from frigate.config import RetainModeEnum, FrigateConfig
+from frigate.config import FrigateConfig, RetainModeEnum
 from frigate.const import RECORD_DIR, SECONDS_IN_DAY
 from frigate.models import Event, Recordings, Timeline, RecordingsToDelete
 from frigate.record.util import remove_empty_directories
@@ -288,7 +288,7 @@ class RecordingCleanup(threading.Thread):
         # Expire tmp clips every minute, recordings and clean directories every hour.
         for counter in itertools.cycle(range(self.config.record.expire_interval)):
             if self.stop_event.wait(60):
-                logger.info(f"Exiting recording cleanup...")
+                logger.info("Exiting recording cleanup...")
                 break
             self.clean_tmp_clips()
 

@@ -5,15 +5,13 @@ import logging
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union, Literal
 
-
-import requests
 import matplotlib.pyplot as plt
-from pydantic import BaseModel, Extra, Field, validator
+import requests
+from pydantic import BaseModel, Extra, Field
 from pydantic.fields import PrivateAttr
+
 from frigate.plus import PlusApi
-
 from frigate.util import load_labels
-
 
 logger = logging.getLogger(__name__)
 
