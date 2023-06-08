@@ -267,7 +267,7 @@ CMD ["sleep", "infinity"]
 
 
 # Frigate web build
-# force this to run on amd64 because QEMU is painfully slow
+# This should be architecture agnostic, so speed up the build on multiarch by not using QEMU.
 FROM --platform=$BUILDPLATFORM node:16 AS web-build
 
 WORKDIR /work
