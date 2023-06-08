@@ -8,12 +8,11 @@ import threading
 from multiprocessing.synchronize import Event as MpEvent
 from pathlib import Path
 
-from peewee import chunked, DoesNotExist, DatabaseError
-from multiprocessing.synchronize import Event as MpEvent
+from peewee import DatabaseError, DoesNotExist, chunked
 
 from frigate.config import FrigateConfig, RetainModeEnum
 from frigate.const import RECORD_DIR, SECONDS_IN_DAY
-from frigate.models import Event, Recordings, Timeline, RecordingsToDelete
+from frigate.models import Event, Recordings, RecordingsToDelete, Timeline
 from frigate.record.util import remove_empty_directories
 from frigate.storage import StorageS3
 
@@ -261,7 +260,7 @@ class RecordingCleanup(threading.Thread):
 
         if len(recordings_to_delete) / recordings.count() > 0.5:
             logger.debug(
-                f"Deleting {(len(recordings_to_delete) / recordings.count()):2f}% of recordings looks like as bug. Do nothing"
+                f"Deleting {(len(recordings_to_delete) / recordings.count()):2f}% of recordings could be due to configuration error. Aborting..."
             )
             return
 
