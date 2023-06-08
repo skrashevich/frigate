@@ -239,6 +239,12 @@ class RecordingCleanup(threading.Thread):
             {"id": recording_id} for recording_id in recordings_to_delete
         ]
 
+        if len(recordings_to_delete) / recordings.count() > 0.5:
+            logger.debug(
+                f"Deleting {(len(recordings_to_delete) / recordings.count()):2f}% of recordings looks like as bug. Do nothing"
+            )
+            return
+
         logger.debug(
             f"Deleting {len(recordings_to_delete)} recordings with missing files"
         )
