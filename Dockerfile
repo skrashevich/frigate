@@ -3,7 +3,7 @@
 # https://askubuntu.com/questions/972516/debian-frontend-environment-variable
 ARG DEBIAN_FRONTEND=noninteractive
 
-FROM debian:11 AS base
+FROM python:3.11-bullseye AS base
 ARG DEBIAN_FRONTEND
 RUN <<EOT
     apt update --allow-insecure-repositories
@@ -11,7 +11,7 @@ RUN <<EOT
     update-ca-certificates
 EOT
 
-FROM --platform=linux/amd64 debian:11 AS base_amd64
+FROM --platform=linux/amd64 python:3.11-bullseye AS base_amd64
 ARG DEBIAN_FRONTEND
 RUN <<EOT
     apt update --allow-insecure-repositories
@@ -19,7 +19,7 @@ RUN <<EOT
     update-ca-certificates
 EOT
 
-FROM debian:11-slim AS slim-base
+FROM python:3.11-slim-bullseye AS slim-base
 ARG DEBIAN_FRONTEND
 RUN <<EOT
     apt update --allow-insecure-repositories
@@ -76,7 +76,7 @@ ARG DEBIAN_FRONTEND
 # Install OpenVino Runtime and Dev library
 ADD requirements-ov.txt /requirements-ov.txt
 RUN     apt-get -qq update \
-    && apt-get -qq install -y wget python3 python3-distutils \
+    && apt-get -qq install -y wget python3-distutils \
     && wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip" \
     && pip install -r /requirements-ov.txt
@@ -152,7 +152,6 @@ RUN apt-get -qq update \
     && echo "deb http://raspbian.raspberrypi.org/raspbian/ bullseye main contrib non-free rpi" | tee /etc/apt/sources.list.d/raspi.list \
     && apt-get -qq update \
     && apt-get -qq install -y --no-install-recommends \
-    python3 \
     python3-dev \
     wget \
     # opencv dependencies
@@ -164,7 +163,9 @@ RUN apt-get -qq update \
     libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev \
     libgl1 \
     # scipy dependencies
-    gcc gfortran libopenblas-dev liblapack-dev && \
+    gcc gfortran libopenblas-dev liblapack-dev \
+    # mediapipe dependencies
+    protobuf-compiler && \
     apt-get clean
 
 RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
@@ -222,7 +223,7 @@ COPY --link --from=deps-rootfs / /
 #ADD --link docker/ffprobe /usr/lib/btbn-ffmpeg/bin/ffprobe
 #COPY --from=skrashevich/ffmpeg:linux64-nonfree-shared-5.1 /app /usr/lib/btbn-ffmpeg
 
-RUN ldconfig
+RUN ldconfig; true
 
 EXPOSE 5000
 EXPOSE 1935
@@ -300,7 +301,7 @@ FROM frigate AS frigate-tensorrt
 COPY --link --from=libusb-build /usr/local/lib /usr/local/lib
 RUN --mount=type=bind,from=trt-wheels,source=/trt-wheels,target=/deps/trt-wheels \
     pip3 install -U /deps/trt-wheels/*.whl && \
-    ln -s libnvrtc.so.11.2 /usr/local/lib/python3.9/dist-packages/nvidia/cuda_nvrtc/lib/libnvrtc.so && \
+    ln -s libnvrtc.so.11.7 /usr/local/lib/python3.11/dist-packages/nvidia/cuda_nvrtc/lib/libnvrtc.so && \
     ldconfig
 
 # Dev Container w/ TRT
