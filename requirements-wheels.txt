@@ -24,6 +24,7 @@ types-requests == 2.31.*
 scipy == 1.10.*
 norfair == 2.2.*
 setproctitle >= 1.3.0
+tensorflow == 2.12.*
 ws4py == 0.5.*
 openvino == 2023.*; platform_machine == 'x86_64'
 # Openvino Library - Custom built with MYRIAD support
