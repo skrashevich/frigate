@@ -110,9 +110,8 @@ RUN /bin/mkdir -p '/usr/local/lib' && \
     /usr/bin/install -c -m 644 libusb.h '/usr/local/include/libusb-1.0' && \
     /bin/mkdir -p '/usr/local/lib/pkgconfig' && \
     cd  /opt/libusb-1.0.25/ && \
-    /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig'
-
-RUN ldconfig; true
+    /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig' && \
+    ldconfig
 
 
 
