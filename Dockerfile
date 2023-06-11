@@ -110,8 +110,9 @@ RUN /bin/mkdir -p '/usr/local/lib' && \
     /usr/bin/install -c -m 644 libusb.h '/usr/local/include/libusb-1.0' && \
     /bin/mkdir -p '/usr/local/lib/pkgconfig' && \
     cd  /opt/libusb-1.0.25/ && \
-    /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig' && \
-    ldconfig
+    /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig'
+
+RUN ldconfig; true
 
 
 
@@ -301,8 +302,8 @@ FROM frigate AS frigate-tensorrt
 COPY --link --from=libusb-build /usr/local/lib /usr/local/lib
 RUN --mount=type=bind,from=trt-wheels,source=/trt-wheels,target=/deps/trt-wheels \
     pip3 install -U /deps/trt-wheels/*.whl && \
-    ln -s libnvrtc.so.11.7 /usr/local/lib/python3.11/dist-packages/nvidia/cuda_nvrtc/lib/libnvrtc.so && \
-    ldconfig
+    ln -s libnvrtc.so.11.7 /usr/local/lib/python3.11/dist-packages/nvidia/cuda_nvrtc/lib/libnvrtc.so
+RUN --mount=type=bind,from=trt-wheels,source=/trt-wheels,target=/deps/trt-wheels ldconfig; true
 
 # Dev Container w/ TRT
 FROM devcontainer AS devcontainer-trt
