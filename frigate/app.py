@@ -1,3 +1,4 @@
+import datetime
 import logging
 import multiprocessing as mp
 import os
@@ -168,6 +169,15 @@ class FrigateApp:
         self.timeline_queue: Queue = mp.Queue()
 
     def init_database(self) -> None:
+        def vacuum_db(db: SqliteExtDatabase) -> None:
+            db.execute_sql("VACUUM;")
+
+            try:
+                with open(f"{CONFIG_DIR}/.vacuum", "w") as f:
+                    f.write(str(datetime.datetime.now().timestamp()))
+            except PermissionError:
+                logger.error("Unable to write to /config to save DB state")
+
         # Migrate DB location
         old_db_path = DEFAULT_DB_PATH
         if not os.path.isfile(self.config.database.path) and os.path.isfile(
@@ -182,6 +192,24 @@ class FrigateApp:
         del logging.getLogger("peewee_migrate").handlers[:]
         router = Router(migrate_db)
         router.run()
+
+        # check if vacuum needs to be run
+        if os.path.exists(f"{CONFIG_DIR}/.vacuum"):
+            with open(f"{CONFIG_DIR}/.vacuum") as f:
+                try:
+                    timestamp = int(f.readline())
+                except Exception:
+                    timestamp = 0
+
+                if (
+                    timestamp
+                    < (
+                        datetime.datetime.now() - datetime.timedelta(weeks=2)
+                    ).timestamp()
+                ):
+                    vacuum_db(migrate_db)
+        else:
+            vacuum_db(migrate_db)
 
         migrate_db.close()
 
@@ -206,7 +234,15 @@ class FrigateApp:
     def bind_database(self) -> None:
         """Bind db to the main process."""
         # NOTE: all db accessing processes need to be created before the db can be bound to the main process
-        self.db = TimedSqliteQueueDatabase(self.config.database.path)
+        self.db = TimedSqliteQueueDatabase(
+            self.config.database.path,
+            pragmas={
+                "auto_vacuum": "FULL",  # Does not defragment database
+                "cache_size": -512 * 1000,  # 512MB of cache,
+                "synchronous": "NORMAL",  # Safe when using WAL https://www.sqlite.org/pragma.html#pragma_synchronous
+            },
+            timeout=60,
+        )
         models = [Event, Recordings, Timeline]
         self.db.bind(models)
 
@@ -394,7 +430,7 @@ class FrigateApp:
         self.frigate_watchdog.start()
 
     def check_shm(self) -> None:
-        available_shm = round(shutil.disk_usage("/dev/shm").total / 1000000, 1)
+        available_shm = round(shutil.disk_usage("/dev/shm").total / pow(2, 20), 1)
         min_req_shm = 30
 
         for _, camera in self.config.cameras.items():

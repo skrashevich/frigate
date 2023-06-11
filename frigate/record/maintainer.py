@@ -119,7 +119,7 @@ class RecordingMaintainer(threading.Thread):
                 Event.select()
                 .where(
                     Event.camera == camera,
-                    (Event.end_time is None)
+                    (Event.end_time == None)
                     | (Event.end_time >= recordings[0]["start_time"].timestamp()),
                     Event.has_clip,
                 )
@@ -330,7 +330,7 @@ class RecordingMaintainer(threading.Thread):
                     # get the segment size of the cache file
                     # file without faststart is same size
                     segment_size = round(
-                        float(os.path.getsize(cache_path)) / 1000000, 1
+                        float(os.path.getsize(cache_path)) / pow(2, 20), 1
                     )
                 except OSError:
                     segment_size = 0
