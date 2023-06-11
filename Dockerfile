@@ -302,7 +302,7 @@ FROM frigate AS frigate-tensorrt
 COPY --link --from=libusb-build /usr/local/lib /usr/local/lib
 RUN --mount=type=bind,from=trt-wheels,source=/trt-wheels,target=/deps/trt-wheels \
     pip3 install -U /deps/trt-wheels/*.whl
-RUN for i in `find / -name libnvrtc.so.*`; do ln -s \$i /usr/local/lib/python3.11/dist-packages/nvidia/cuda_nvrtc/lib/`basename \$i`; done
+RUN for i in `find / -name libnvrtc.so.*`; do mkdir -p `dirname \$i`; ln -s \$i /usr/local/lib/python3.11/dist-packages/nvidia/cuda_nvrtc/lib/`basename \$i`; done
 RUN ldconfig; true
 
 # Dev Container w/ TRT
