@@ -1,3 +1,3 @@
 numpy == 1.23.*
-openvino == 2023.*; platform_machine == 'x86_64'
-openvino-dev[tensorflow2] == 2023.*; platform_machine == 'x86_64'
+openvino == 2022.*
+openvino-dev[tensorflow2] == 2022.*

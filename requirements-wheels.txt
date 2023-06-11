@@ -1,11 +1,11 @@
-boto3 >= 1.26.0
+boto3 == 1.26.*
 click == 8.1.*
 Flask == 2.3.*
 imutils == 0.5.*
 matplotlib == 3.7.*
-mediapipe >= 0.9; platform_machine == 'x86_64'
-
-mypy >= 0.942
+mediapipe == 0.9.*; platform_machine == 'x86_64'
+mediapipe == 0.8.*; platform_machine != 'x86_64'
+mypy == 0.942
 numpy == 1.23.*
 onvif_zeep == 0.2.12
 opencv-python-headless == 4.5.5.*
@@ -13,7 +13,7 @@ paho-mqtt == 1.6.*
 peewee == 3.16.*
 peewee_migrate == 1.10.*
 psutil == 5.9.*
-pydantic >= 1.10.0
+pydantic == 1.10.*
 git+https://github.com/fbcotter/py3nvml#egg=py3nvml
 PyYAML == 6.0
 pytz == 2023.3
@@ -23,10 +23,8 @@ requests == 2.31.*
 types-requests == 2.31.*
 scipy == 1.10.*
 norfair == 2.2.*
-setproctitle >= 1.3.0
-tensorflow == 2.12.*
+setproctitle == 1.3.*
 ws4py == 0.5.*
-openvino == 2023.*; platform_machine == 'x86_64'
 # Openvino Library - Custom built with MYRIAD support
-#openvino @ https://github.com/NateMeyer/openvino-wheels/releases/download/multi-arch_2022.2.0/openvino-2022.2.0-000-cp39-cp39-manylinux_2_31_x86_64.whl; platform_machine == 'x86_64'
-#openvino @ https://github.com/NateMeyer/openvino-wheels/releases/download/multi-arch_2022.2.0/openvino-2022.2.0-000-cp39-cp39-linux_aarch64.whl; platform_machine == 'aarch64'
+openvino @ https://github.com/NateMeyer/openvino-wheels/releases/download/multi-arch_2022.2.0/openvino-2022.2.0-000-cp39-cp39-manylinux_2_31_x86_64.whl; platform_machine == 'x86_64'
+openvino @ https://github.com/NateMeyer/openvino-wheels/releases/download/multi-arch_2022.2.0/openvino-2022.2.0-000-cp39-cp39-linux_aarch64.whl; platform_machine == 'aarch64'

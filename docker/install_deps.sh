@@ -13,8 +13,7 @@ apt-get -qq install --no-install-recommends -y \
     python3-pip \
     curl \
     jq \
-    nethogs \
-    libgl1
+    nethogs
 
 mkdir -p -m 600 /root/.gnupg
 
