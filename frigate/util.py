@@ -842,17 +842,12 @@ def get_cpu_stats() -> dict[str, dict]:
 
             with open(f"/proc/{pid}/statm", "r") as f:
                 mem_stats = f.readline().split()
-            if os.sysconf("SC_PAGE_SIZE"):
-                mem_res = int(mem_stats[1]) * os.sysconf("SC_PAGE_SIZE") / 1024
-            else:
-                mem_res = 0
+            mem_res = int(mem_stats[1]) * os.sysconf("SC_PAGE_SIZE") / 1024
 
-            if docker_memlimit:
+            if docker_memlimit > 0:
                 mem_pct = round((mem_res / docker_memlimit) * 100, 1)
-            elif total_mem:
-                mem_pct = round((mem_res / total_mem) * 100, 1)
             else:
-                mem_pct = 0
+                mem_pct = round((mem_res / total_mem) * 100, 1)
 
             usages[pid] = {
                 "cpu": str(cpu_percent),
@@ -862,6 +857,7 @@ def get_cpu_stats() -> dict[str, dict]:
             }
         except Exception as e:
             logger.debug(f"Unable to calculate cpu_stats: {e}")
+            continue
 
     return usages
 
@@ -1018,7 +1014,7 @@ def get_nvidia_gpu_stats() -> dict[int, dict]:
             else:
                 gpu_util = 0
 
-            if meminfo != "N/A" and meminfo.total:
+            if meminfo != "N/A":
                 gpu_mem_util = meminfo.used / meminfo.total * 100
             else:
                 gpu_mem_util = -1
