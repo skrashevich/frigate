@@ -845,7 +845,7 @@ def get_cpu_stats() -> dict[str, dict]:
             if os.sysconf("SC_PAGE_SIZE"):
                 mem_res = int(mem_stats[1]) * os.sysconf("SC_PAGE_SIZE") / 1024
             else:
-                mem_res = int(mem_stats[1])
+                mem_res = 0
 
             if docker_memlimit:
                 mem_pct = round((mem_res / docker_memlimit) * 100, 1)
