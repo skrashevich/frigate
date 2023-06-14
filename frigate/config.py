@@ -11,7 +11,13 @@ import numpy as np
 from pydantic import BaseModel, Extra, Field, parse_obj_as, validator
 from pydantic.fields import PrivateAttr
 
-from frigate.const import CACHE_DIR, DEFAULT_DB_PATH, REGEX_CAMERA_NAME, YAML_EXT
+from frigate.const import (
+    CACHE_DIR,
+    DEFAULT_DB_PATH,
+    REGEX_CAMERA_NAME,
+    YAML_EXT,
+    COLOR_MAP,
+)
 from frigate.detectors import DetectorConfig, ModelConfig
 from frigate.detectors.detector_config import InputTensorEnum  # noqa: F401
 from frigate.detectors.detector_config import PixelFormatEnum  # noqa: F401
@@ -61,6 +67,14 @@ class TimeFormatEnum(str, Enum):
     browser = "browser"
     hours12 = "12hour"
     hours24 = "24hour"
+
+
+class BirdseyeBackgroundColorEnum(str, Enum):
+    pass
+
+
+for color in COLOR_MAP:
+    setattr(BirdseyeBackgroundColorEnum, color, color)
 
 
 class DateTimeStyleEnum(str, Enum):
@@ -411,6 +425,9 @@ class BirdseyeConfig(FrigateBaseModel):
     )
     mode: BirdseyeModeEnum = Field(
         default=BirdseyeModeEnum.objects, title="Tracking mode."
+    )
+    background: BirdseyeBackgroundColorEnum = Field(
+        default="black", title="Background color."
     )
 
 

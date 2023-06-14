@@ -22,7 +22,7 @@ from ws4py.server.wsgiutils import WebSocketWSGIApplication
 from ws4py.websocket import WebSocket
 
 from frigate.config import BirdseyeModeEnum, FrigateConfig
-from frigate.const import BASE_DIR, BIRDSEYE_PIPE
+from frigate.const import BASE_DIR, BIRDSEYE_PIPE, COLOR_MAP
 from frigate.util import SharedMemoryFrameManager, copy_yuv_to_position, get_yuv_crop
 
 logger = logging.getLogger(__name__)
@@ -155,9 +155,14 @@ class BroadcastThread(threading.Thread):
 
 
 class BirdsEyeFrameManager:
-    def __init__(self, config: FrigateConfig, frame_manager: SharedMemoryFrameManager):
+    def __init__(
+        self,
+        config: FrigateConfig,
+        frame_manager: SharedMemoryFrameManager,
+    ):
         self.config = config
         self.mode = config.birdseye.mode
+        self.background_color = COLOR_MAP[config.birdseye.background]
         self.frame_manager = frame_manager
         width = config.birdseye.width
         height = config.birdseye.height
@@ -167,7 +172,7 @@ class BirdsEyeFrameManager:
 
         # initialize the frame as black and with the Frigate logo
         self.blank_frame = np.zeros(self.yuv_shape, np.uint8)
-        self.blank_frame[:] = 128
+        self.blank_frame[:] = self.background_color
         self.blank_frame[0 : self.frame_shape[0], 0 : self.frame_shape[1]] = 16
 
         # find and copy the logo on the blank frame

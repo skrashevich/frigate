@@ -30,3 +30,23 @@ DRIVER_INTEL_iHD = "iHD"
 MAX_SEGMENT_DURATION = 600
 SECONDS_IN_DAY = 60 * 60 * 24
 MAX_PLAYLIST_SECONDS = 7200  # support 2 hour segments for a single playlist to account for cameras with inconsistent segment times
+
+COLOR_MAP = {
+    "red": (0, 0, 255),
+    "lime": (0, 255, 0),
+    "blue": (255, 0, 0),
+    "yellow": (0, 255, 255),
+    "cyan": (255, 255, 0),
+    "magenta": (255, 0, 255),
+    "silver": (192, 192, 192),
+    "gray": (128, 128, 128),
+    "maroon": (0, 0, 128),
+    "olive": (0, 128, 128),
+    "green": (0, 128, 0),
+    "purple": (128, 0, 128),
+    "teal": (128, 128, 0),
+    "navy": (128, 0, 0),
+    "black": (0, 0, 0),
+    "white": (255, 255, 255),
+    # Add more colors as needed...
+}
