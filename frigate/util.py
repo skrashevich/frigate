@@ -742,11 +742,12 @@ def clean_camera_user_pass(line: str) -> str:
 
 def escape_special_characters(path: str) -> str:
     """Cleans reserved characters to encodings for ffmpeg."""
-    try:
-        found = re.search(REGEX_RTSP_CAMERA_USER_PASS, path).group(0)[3:-1]
+    match = re.search(REGEX_RTSP_CAMERA_USER_PASS, path)
+    if match:
+        found = match.group(0)[3:-1]
         pw = found[(found.index(":") + 1) :]
         return path.replace(pw, urllib.parse.quote_plus(pw))
-    except AttributeError:
+    else:
         # path does not have user:pass
         return path
 
@@ -841,12 +842,17 @@ def get_cpu_stats() -> dict[str, dict]:
 
             with open(f"/proc/{pid}/statm", "r") as f:
                 mem_stats = f.readline().split()
-            mem_res = int(mem_stats[1]) * os.sysconf("SC_PAGE_SIZE") / 1024
-
-            if docker_memlimit > 0:
-                mem_pct = round((mem_res / docker_memlimit) * 100, 1)
+            if os.sysconf("SC_PAGE_SIZE"):
+                mem_res = int(mem_stats[1]) * os.sysconf("SC_PAGE_SIZE") / 1024
             else:
+                mem_res = int(mem_stats[1])
+
+            if docker_memlimit:
+                mem_pct = round((mem_res / docker_memlimit) * 100, 1)
+            elif total_mem:
                 mem_pct = round((mem_res / total_mem) * 100, 1)
+            else:
+                mem_pct = 0
 
             usages[pid] = {
                 "cpu": str(cpu_percent),
@@ -854,8 +860,8 @@ def get_cpu_stats() -> dict[str, dict]:
                 "mem": f"{mem_pct}",
                 "cmdline": " ".join(cmdline),
             }
-        except Exception:
-            continue
+        except Exception as e:
+            logger.debug(f"Unable to calculate cpu_stats: {e}")
 
     return usages
 
@@ -1012,7 +1018,7 @@ def get_nvidia_gpu_stats() -> dict[int, dict]:
             else:
                 gpu_util = 0
 
-            if meminfo != "N/A":
+            if meminfo != "N/A" and meminfo.total:
                 gpu_mem_util = meminfo.used / meminfo.total * 100
             else:
                 gpu_mem_util = -1
