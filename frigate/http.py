@@ -1101,7 +1101,9 @@ def latest_frame(camera_name):
         width = int(height * frame.shape[1] / frame.shape[0])
 
         try:
-            frame = cv2.resize(frame, dsize=(width, height), interpolation=cv2.INTER_AREA)
+            frame = cv2.resize(
+                frame, dsize=(width, height), interpolation=cv2.INTER_AREA
+            )
         except Exception as e:
             logger.debug(f"Failed to resize latest snapshot :: {e}")
             return "Error resizing snapshot", 500
