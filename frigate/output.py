@@ -9,6 +9,7 @@ import subprocess as sp
 import threading
 import traceback
 from wsgiref.simple_server import make_server
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -78,8 +79,9 @@ class FFMpegConverter:
         if self.bd_pipe:
             os.close(self.bd_pipe)
 
-        if os.path.exists(BIRDSEYE_PIPE):
-            os.remove(BIRDSEYE_PIPE)
+        birdseye_pipe_path = Path(BIRDSEYE_PIPE)
+        if birdseye_pipe_path.exists():
+            birdseye_pipe_path.unlink()
 
         os.mkfifo(BIRDSEYE_PIPE, mode=0o777)
         stdin = os.open(BIRDSEYE_PIPE, os.O_RDONLY | os.O_NONBLOCK)
@@ -173,16 +175,15 @@ class BirdsEyeFrameManager:
         # find and copy the logo on the blank frame
         birdseye_logo = None
 
-        custom_logo_files = glob.glob(f"{BASE_DIR}/custom.png")
-
-        if len(custom_logo_files) > 0:
-            birdseye_logo = cv2.imread(custom_logo_files[0], cv2.IMREAD_UNCHANGED)
-
-        if birdseye_logo is None:
-            logo_files = glob.glob("/opt/frigate/frigate/images/birdseye.png")
-
+        for logo_path in [
+            f"{BASE_DIR}/custom.png",
+            "/opt/frigate/frigate/images/birdseye.png",
+        ]:
+            logo_files = glob.glob(logo_path)
             if len(logo_files) > 0:
                 birdseye_logo = cv2.imread(logo_files[0], cv2.IMREAD_UNCHANGED)
+                if birdseye_logo is not None:
+                    break
 
         if birdseye_logo is not None:
             transparent_layer = birdseye_logo[:, :, 3]
@@ -353,77 +354,45 @@ class BirdsEyeFrameManager:
             canvas, cameras_to_add: list[str], coefficient
         ) -> tuple[any]:
             """Calculate the optimal layout for 3+ cameras."""
-            camera_layout: list[list[any]] = []
-            camera_layout.append([])
+            camera_layout: list[list[any]] = [[]]
             canvas_aspect = canvas[0] / canvas[1]
-            starting_x = 0
-            x = starting_x
-            y = 0
-            y_i = 0
-            max_height = 0
+            x = starting_x = 0
+            y = y_i = max_height = 0
+
             for camera in cameras_to_add:
                 camera_dims = self.cameras[camera]["dimensions"].copy()
                 camera_aspect = camera_dims[0] / camera_dims[1]
+                scaled_dims = [int(dim * coefficient) for dim in camera_dims]
 
-                if camera_dims[1] > camera_dims[0]:
-                    portrait = True
-                elif camera_aspect < canvas_aspect:
+                portrait = (
+                    camera_dims[1] > camera_dims[0] or camera_aspect < canvas_aspect
+                )
+                if portrait or camera_aspect < canvas_aspect:
                     # if the camera aspect ratio is less than canvas aspect ratio, it needs to be scaled down to fit
-                    camera_dims[0] *= camera_aspect / canvas_aspect
-                    camera_dims[1] *= camera_aspect / canvas_aspect
-                    portrait = False
-                else:
-                    portrait = False
+                    scaled_dims = [
+                        int(dim * camera_aspect / canvas_aspect) for dim in camera_dims
+                    ]
 
-                if (x + camera_dims[0] * coefficient) <= canvas[0]:
+                if (x + scaled_dims[0]) <= canvas[0]:
                     # insert if camera can fit on current row
-                    scaled_width = int(camera_dims[0] * coefficient)
-                    camera_layout[y_i].append(
-                        (
-                            camera,
-                            (
-                                x,
-                                y,
-                                scaled_width,
-                                int(camera_dims[1] * coefficient),
-                            ),
-                        )
-                    )
-                    x += scaled_width
-
+                    camera_layout[y_i].append((camera, (x, y, *scaled_dims)))
+                    x += scaled_dims[0]
                     if portrait:
-                        starting_x = scaled_width
+                        starting_x = scaled_dims[0]
                     else:
-                        max_height = max(
-                            max_height,
-                            int(camera_dims[1] * coefficient),
-                        )
+                        max_height = max(max_height, scaled_dims[1])
                 else:
                     # move on to the next row and insert
                     y += max_height
                     y_i += 1
                     camera_layout.append([])
                     x = starting_x
+                    safe_coefficient = 1 if scaled_dims[0] > canvas[0] else coefficient
+                    scaled_dims = [int(dim * safe_coefficient) for dim in camera_dims]
+                    camera_layout[y_i].append((camera, (x, y, *scaled_dims)))
+                    x += scaled_dims[0]
 
-                    if camera_dims[0] * coefficient > canvas_width:
-                        safe_coefficient = 1
-                    else:
-                        safe_coefficient = coefficient
-
-                    camera_layout[y_i].append(
-                        (
-                            camera,
-                            (
-                                x,
-                                y,
-                                int(camera_dims[0] * safe_coefficient),
-                                int(camera_dims[1] * safe_coefficient),
-                            ),
-                        )
-                    )
-                    x += int(camera_dims[0] * safe_coefficient)
-
-            return (camera_layout, y + max_height)
+            return camera_layout, y + max_height
 
         # determine how many cameras are tracking objects within the last 30 seconds
         active_cameras = set(
