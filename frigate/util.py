@@ -772,7 +772,11 @@ def get_cpu_stats() -> dict[str, dict]:
 
             process_elapsed_sec = system_uptime_sec - process_starttime_sec
             process_usage_sec = process_utime_sec + process_stime_sec
-            cpu_average_usage = process_usage_sec * 100 // process_elapsed_sec
+            cpu_average_usage = (
+                process_usage_sec * 100 // process_elapsed_sec
+                if process_elapsed_sec
+                else 0
+            )
 
             with open(f"/proc/{pid}/statm", "r") as f:
                 mem_stats = f.readline().split()
