@@ -689,6 +689,8 @@ class CameraConfig(FrigateBaseModel):
             if has_rtmp:
                 config["ffmpeg"]["inputs"][0]["roles"].append("rtmp")
 
+        if "detect" not in config:
+            config["detect"] = {}
         if (
             config["detect"].get("height") is None
             or config["detect"].get("width") is None
