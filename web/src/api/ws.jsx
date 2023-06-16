@@ -66,7 +66,7 @@ export function WsProvider({
       };
     },
     // Forces reconnecting
-    [state.__reconnectAttempts, wsUrl] // eslint-disable-line react-hooks/exhaustive-deps
+    [state.__reconnectAttempts, wsUrl] 
   );
 
   return <WS.Provider value={{ state, ws: wsRef.current }}>{children}</WS.Provider>;

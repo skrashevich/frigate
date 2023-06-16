@@ -36,7 +36,7 @@ export default function Select({
       setFocused(selectedIndex);
     }
     // DO NOT include `selected`
-  }, [options, propSelected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [options, propSelected]); 
 
   useEffect(() => {
     if (type === 'datepicker') {

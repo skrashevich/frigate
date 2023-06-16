@@ -48,7 +48,7 @@ export default function TextField({
       setValue(propValue);
     }
     // DO NOT include `value`
-  }, [propValue, setValue]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [propValue, setValue]); 
 
   const labelMoved = isFocused || value !== '';
 

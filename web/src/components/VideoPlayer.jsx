@@ -85,7 +85,7 @@ export default function VideoPlayer({ children, options, seekOptions = {forward:
       player.dispose();
       onDispose();
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); 
 
   return (
     <div data-vjs-player>
