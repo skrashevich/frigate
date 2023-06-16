@@ -456,7 +456,6 @@ class FrigateApp:
             deployment_environment="production",
         )
 
-        tracer = trace.get_tracer("frigate", VERSION)
         self.init_logger()
         logger.info(f"Starting Frigate ({VERSION})")
         try:
