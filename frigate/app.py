@@ -11,6 +11,7 @@ from multiprocessing.synchronize import Event as MpEvent
 from types import FrameType
 from typing import Optional
 
+
 import psutil
 from peewee_migrate import Router
 from playhouse.sqlite_ext import SqliteExtDatabase
