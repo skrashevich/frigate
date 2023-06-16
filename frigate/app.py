@@ -10,6 +10,8 @@ from multiprocessing.queues import Queue
 from multiprocessing.synchronize import Event as MpEvent
 from types import FrameType
 from typing import Optional
+import uptrace
+from opentelemetry import trace
 
 
 import psutil
@@ -447,6 +449,14 @@ class FrigateApp:
             )
 
     def start(self) -> None:
+        uptrace.configure_opentelemetry(
+            dsn=os.environ.get("UPTRACE_DSN"),
+            service_name=os.environ.get("OTEL_SERVICE_NAME", "frigate"),
+            service_version=VERSION,
+            deployment_environment="production",
+        )
+
+        tracer = trace.get_tracer("frigate", VERSION)
         self.init_logger()
         logger.info(f"Starting Frigate ({VERSION})")
         try:
