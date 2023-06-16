@@ -1176,7 +1176,26 @@ def get_video_properties(url, get_duration=False):
         # Get the frames per second (fps) of the video stream
         fps = video.get(cv2.CAP_PROP_FPS)
         total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-        duration = total_frames / fps
+
+        if fps and total_frames:
+            duration = total_frames / fps
+        else:
+            # if cv2 failed need to use ffprobe
+            ffprobe_cmd = [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                f"{url}",
+            ]
+            p = sp.run(ffprobe_cmd, capture_output=True)
+            if p.returncode == 0 and p.stdout.decode():
+                duration = float(p.stdout.decode().strip())
+            else:
+                duration = -1
 
         result["duration"] = duration
 
