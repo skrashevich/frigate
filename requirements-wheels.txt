@@ -1,6 +1,7 @@
 boto3 == 1.26.*
 click == 8.1.*
 Flask == 2.3.*
+honeycomb-opentelemetry == 0.2.1b0
 imutils == 0.5.*
 matplotlib == 3.7.*
 mediapipe == 0.9.*; platform_machine == 'x86_64'
