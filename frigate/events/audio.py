@@ -134,10 +134,8 @@ class AudioEventMaintainer(threading.Thread):
         self.pipe = f"{CACHE_DIR}/{self.config.name}-audio"
         self.ffmpeg_cmd = get_ffmpeg_arg_list(
             FFMPEG_COMMAND.format(
-                " ".join(
-                    self.config.ffmpeg.global_args
-                    + parse_preset_input("preset-rtsp-audio-only", 1)
-                ),
+                " ".join(self.config.ffmpeg.global_args)
+                + " ".join(parse_preset_input("preset-rtsp-audio-only", 1)),
                 [i.path for i in self.config.ffmpeg.inputs if "audio" in i.roles][0],
                 self.pipe,
             )
