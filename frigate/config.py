@@ -48,7 +48,11 @@ DEFAULT_DETECT_DIMENSIONS = {"width": 1280, "height": 720}
 
 class FrigateBaseModel(BaseModel):
     class Config:
-        extra = Extra.forbid
+        extra = (
+            Extra.allow
+            if os.environ.get("FRIGATE_ALLOW_EXTRA") is not None
+            else Extra.forbid
+        )
 
 
 class LiveModeEnum(str, Enum):
