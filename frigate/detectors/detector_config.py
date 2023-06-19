@@ -1,15 +1,16 @@
 import hashlib
-import os
 import json
 import logging
+import os
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Union, Literal
+from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import requests
 from pydantic import BaseModel, Extra, Field
 from pydantic.fields import PrivateAttr
 
+from frigate.const import AUDIO_DURATION, AUDIO_FORMAT, AUDIO_SAMPLE_RATE
 from frigate.plus import PlusApi
 from frigate.util import load_labels
 
@@ -37,6 +38,18 @@ class ModelTypeEnum(str, Enum):
     yolox = "yolox"
     yolov5 = "yolov5"
     yolov8 = "yolov8"
+
+
+class AudioModelConfig(BaseModel):
+    path: str = Field(
+        default="/cpu_audio_model.tflite", title="Custom Object detection model path."
+    )
+    labelmap_path: str = Field(
+        default="/audio-labelmap.txt", title="Label map for custom object detector."
+    )
+    duration: float = Field(default=AUDIO_DURATION, title="Audio duration.")
+    format: str = Field(default=AUDIO_FORMAT, title="Audio format.")
+    sample_rate: int = Field(default=AUDIO_SAMPLE_RATE, title="Audio sample rate.")
 
 
 class ModelConfig(BaseModel):

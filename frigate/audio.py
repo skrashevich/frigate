@@ -10,10 +10,9 @@ import threading
 import numpy as np
 from setproctitle import setproctitle
 
-from frigate.config import CameraConfig, AudioModelConfig
+from frigate.config import AudioModelConfig, CameraConfig
 from frigate.object_detection import RemoteObjectDetector
-from frigate.util import listen, SharedMemoryFrameManager
-
+from frigate.util import SharedMemoryFrameManager, listen
 
 logger = logging.getLogger(__name__)
 
