@@ -356,7 +356,7 @@ class BirdsEyeFrameManager:
                     if self.stop_event.is_set():
                         return
 
-                    layout_candidate = calculate_layout(
+                    layout_candidate = self.calculate_layout(
                         (canvas_width, canvas_height),
                         active_cameras_to_add,
                         coefficient,
