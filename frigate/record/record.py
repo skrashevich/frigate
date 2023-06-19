@@ -14,7 +14,7 @@ from frigate.config import FrigateConfig
 from frigate.models import Event, Recordings, RecordingsToDelete, Timeline
 from frigate.record.cleanup import RecordingCleanup
 from frigate.record.maintainer import RecordingMaintainer
-from frigate.types import RecordMetricsTypes
+from frigate.types import FeatureMetricsTypes
 from frigate.util import listen
 from frigate.database import TimedSqliteQueueDatabase
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 def manage_recordings(
     config: FrigateConfig,
     recordings_info_queue: mp.Queue,
-    process_info: dict[str, RecordMetricsTypes],
+    process_info: dict[str, FeatureMetricsTypes],
 ) -> None:
     stop_event = mp.Event()
 
