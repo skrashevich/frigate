@@ -38,7 +38,7 @@ export default function Birdseye() {
     if ('MediaSource' in window) {
       player = (
         <Fragment>
-          <div className={ptzCameras.length ? 'max-w-5xl xl:w-1/2' : 'max-w-5xl'}>
+          <div className={ptzCameras.length && !isMaxWidth ? 'max-w-5xl xl:w-1/2' : 'w-full'}>
             <video-stream
               mode="mse"
               src={new URL(`${baseUrl.replace(/^http/, 'ws')}live/webrtc/api/ws?src=birdseye`)}
@@ -55,10 +55,10 @@ export default function Birdseye() {
         </Fragment>
       );
     }
-  } else if (viewSource == 'webrtc' && config.birdseye.restream) {
+  } else if (viewSource == 'webrtc' ) {
     player = (
       <Fragment>
-        <div className={ptzCameras.length ? 'max-w-5xl xl:w-1/2' : 'max-w-5xl'}>
+        <div className={ptzCameras.length && config.birdseye.restream && !isMaxWidth ? 'max-w-5xl xl:w-1/2' : 'w-full'}>
           <WebRtcPlayer camera="birdseye" />
         </div>
       </Fragment>
@@ -66,7 +66,7 @@ export default function Birdseye() {
   } else {
     player = (
       <Fragment>
-        <div className={ptzCameras.length ? 'max-w-5xl xl:w-1/2' : 'max-w-5xl'}>
+        <div className={ ptzCameras.length && config.birdseye.restream && !isMaxWidth ? 'max-w-5xl xl:w-1/2' : 'w-full' }>
           <JSMpegPlayer camera="birdseye" />
         </div>
       </Fragment>
@@ -83,15 +83,18 @@ export default function Birdseye() {
         {config.birdseye.restream && (
           <select
             className="basis-1/8 cursor-pointer rounded dark:bg-slate-800"
-            value={viewSource}
-            onChange={(e) => setViewSource(e.target.value)}
+            value={isMaxWidth ? "true" : "false"}
+            onChange={(e) => setIsMaxWidth(e.target.value)}
+            key="width-changer"
           >
             {sourceValues.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>
             ))}
+           
           </select>
+         
         )}
 
         <button onClick={() => setIsMaxWidth(!isMaxWidth)}>Toggle Width</button> {/* Added button */}
@@ -103,7 +106,7 @@ export default function Birdseye() {
         </div>
 
         {ptzCameras.length ? (
-          <div className="dark:bg-gray-800 shadow-md hover:shadow-lg rounded-lg transition-shadow p-4 w-full sm:w-min xl:h-min xl:w-1/2">
+          <div className="dark:bg-gray-800 shadow-md hover:shadow-lg rounded-lg transition-shadow p-4 sm:w-min xl:h-min {playerClass}">
             <Heading size="sm">Control Panel</Heading>
             {ptzCameras.map((camera) => (
               <div className="p-4" key={camera}>
