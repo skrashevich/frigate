@@ -217,19 +217,18 @@ class FrigateApp:
 
         migrate_db.close()
 
-
-def init_nginx_manager(self) -> None:
-    with open("/usr/local/nginx/conf/nginx.conf", "r") as f:
-        file_lines = f.readlines()
-    if self.config.logger.default not in ["warning", "error", "critical"]:
-        with open("/usr/local/nginx/conf/nginx.conf", "w") as f:
-            for line in file_lines:
-                if "access_log /dev/shm/logs/nginx/access_log main;" in line:
-                    line = line.replace(
-                        "access_log /dev/shm/logs/nginx/access_log main;",
-                        "access_log /dev/stdout main;",
-                    )
-                f.write(line)
+    def init_nginx_manager(self) -> None:
+        with open("/usr/local/nginx/conf/nginx.conf", "r") as f:
+            file_lines = f.readlines()
+        if self.config.logger.default not in ["warning", "error", "critical"]:
+            with open("/usr/local/nginx/conf/nginx.conf", "w") as f:
+                for line in file_lines:
+                    if "access_log /dev/shm/logs/nginx/access_log main;" in line:
+                        line = line.replace(
+                            "access_log /dev/shm/logs/nginx/access_log main;",
+                            "access_log /dev/stdout main;",
+                        )
+                    f.write(line)
 
     def init_go2rtc(self) -> None:
         for proc in psutil.process_iter(["pid", "name"]):
