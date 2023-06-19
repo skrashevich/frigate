@@ -31,8 +31,8 @@ def capture_audio(
     signal.signal(signal.SIGTERM, receiveSignal)
     signal.signal(signal.SIGINT, receiveSignal)
 
-    threading.current_thread().name = f"capture:{name}"
-    setproctitle(f"frigate.capture:{name}")
+    threading.current_thread().name = f"capture_audio:{name}"
+    setproctitle(f"frigate.capture_audio:{name}")
     listen()
 
     chunk_size = int(round(model_config.duration * model_config.sample_rate * 2))
@@ -84,8 +84,8 @@ def process_audio(
     signal.signal(signal.SIGTERM, receiveSignal)
     signal.signal(signal.SIGINT, receiveSignal)
 
-    threading.current_thread().name = f"process:{name}"
-    setproctitle(f"frigate.process:{name}")
+    threading.current_thread().name = f"process_audio:{name}"
+    setproctitle(f"frigate.process_audio:{name}")
     listen()
 
     shape = (int(round(model_config.duration * model_config.sample_rate)),)
