@@ -338,7 +338,6 @@ class RecordingMaintainer(threading.Thread):
                         logger.error(
                             f"Unable to upload recording segment {file_path} to s3, fallback to local"
                         )
-                        logger.error(e)
 
                 Recordings.create(
                     id=f"{start_time.timestamp()}-{rand_id}",

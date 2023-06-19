@@ -65,7 +65,7 @@ class ExternalEventProcessor:
             )
         )
 
-        return event_id
+        return event_id.encode("utf-8")
 
     def finish_manual_event(self, event_id: str) -> None:
         """Finish external event with indeterminate duration."""
