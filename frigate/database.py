@@ -14,7 +14,4 @@ class TimedSqliteQueueDatabase(SqliteQueueDatabase):
         end_time = time.time()
         duration = end_time - start_time
         logger.debug(f"Query {sql} with params {params} took {duration:.2f} seconds.")
-        span.set_attribute("sql.query", sql)
-        span.set_attribute("sql.params", str(params))
-        span.set_attribute("sql.duration", duration)
         return cursor
