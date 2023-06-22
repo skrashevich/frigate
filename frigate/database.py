@@ -2,7 +2,7 @@ from playhouse.sqliteq import SqliteQueueDatabase
 from peewee import SENTINEL
 import time
 
-import loggin
+import logging
 
 logger = logging.getLogger(__name__)
 
