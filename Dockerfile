@@ -179,6 +179,8 @@ RUN pip3 install -r requirements.txt
 ADD requirements-wheels.txt /requirements-wheels.txt
 RUN pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
 
+RUN opentelemetry-bootstrap --action=install
+
 # Make this a separate target so it can be built/cached optionally
 FROM wheels as trt-wheels
 ARG DEBIAN_FRONTEND
@@ -211,7 +213,8 @@ ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES="compute,video,utility"
 
 ENV PATH="/usr/lib/btbn-ffmpeg/bin:/usr/local/go2rtc/bin:/usr/local/nginx/sbin:${PATH}"
-
+ENV OTEL_SERVICE_NAME="frigate"
+ENV HONEYCOMB_API_KEY=""
 
 # Install dependencies
 
@@ -227,8 +230,6 @@ COPY --link --from=deps-rootfs / /
 #COPY --from=skrashevich/ffmpeg:linux64-nonfree-shared-5.1 /app /usr/lib/btbn-ffmpeg
 
 RUN ldconfig
-ENV OTEL_SERVICE_NAME="frigate"
-ENV UPTRACE_DSN=""
 
 EXPOSE 5000
 EXPOSE 1935

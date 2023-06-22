@@ -13,7 +13,6 @@ from typing import Optional
 import uptrace
 from opentelemetry import trace
 
-
 import psutil
 from peewee_migrate import Router
 from playhouse.sqlite_ext import SqliteExtDatabase
