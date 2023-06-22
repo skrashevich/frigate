@@ -12,18 +12,19 @@ sed -i 's|deb http|deb-src http|g' /etc/apt/sources.list.d/sources-src.list
 apt update
 apt -yqq install --no-install-recommends ca-certificates wget
 update-ca-certificates -f
-
+apt install -y ccache
 if [[ "${TARGETARCH}" == "arm64" ]]; then
-    CC="/usr/bin/aarch64-linux-gnu-gcc"
+    CC="ccache /usr/bin/aarch64-linux-gnu-gcc"
     dpkg --add-architecture arm64
     apt update
     apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-arm64-cross libc6-dev-arm64-cross binutils-aarch64-linux-gnu
     apt install -y libssl-dev:arm64 libpcre3:arm64 libpcre3-dev:arm64 zlib1g:arm64 zlib1g-dev:arm64 libxslt1-dev:arm64 libxml2-dev:arm64 libgd-dev:arm64 libgeoip-dev:arm64 libgoogle-perftools-dev:arm64 libperl-dev:arm64 liblua5.1-0-dev:arm64 libpam0g-dev:arm64
 else
-    CC="/usr/bin/gcc"
+    CC="ccache /usr/bin/gcc"
 fi
 
 apt -yqq build-dep nginx
+
 
 mkdir /tmp/nginx
 cd /tmp
