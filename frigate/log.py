@@ -10,27 +10,15 @@ from logging import handlers
 from multiprocessing.queues import Queue
 from types import FrameType
 from typing import Deque, Optional
-from frigate.version import VERSION
+
 from setproctitle import setproctitle
 
 from frigate.util import clean_camera_user_pass
-import grpc
-from opentelemetry.exporter.otlp.proto.grpc._log_exporter import (
-    OTLPLogExporter,
-)
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-from opentelemetry.sdk.resources import Resource
 
 
 def listener_configurer() -> None:
     root = logging.getLogger()
-    dsn = os.environ.get("UPTRACE_DSN")
-    resource = Resource(
-        attributes={"service.name": "frigate", "service.version": VERSION}
-    )
-    logger_provider = LoggerProvider(resource=resource)
-    # set_logger_provider(logger_provider)
+
     if root.hasHandlers():
         root.handlers.clear()
 
@@ -41,18 +29,6 @@ def listener_configurer() -> None:
     console_handler.setFormatter(formatter)
     root.addHandler(console_handler)
     root.setLevel(logging.INFO)
-
-    exporter = OTLPLogExporter(
-        endpoint="otlp.uptrace.dev:4317",
-        headers=(("uptrace-dsn", dsn),),
-        timeout=5,
-        compression=grpc.Compression.Gzip,
-    )
-    logger_provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
-
-    handler = LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
-    handler.setFormatter(formatter)
-    root.addHandler(handler)
 
 
 def root_configurer(queue: Queue) -> None:

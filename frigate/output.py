@@ -26,8 +26,6 @@ from frigate.config import BirdseyeModeEnum, FrigateConfig
 from frigate.const import BASE_DIR, BIRDSEYE_PIPE
 from frigate.util import SharedMemoryFrameManager, copy_yuv_to_position, get_yuv_crop
 
-from frigate.tracer import tracer
-
 logger = logging.getLogger(__name__)
 
 
@@ -539,9 +537,7 @@ class BirdsEyeFrameManager:
             return False
 
         try:
-            with tracer.start_as_current_span("update_frame") as span:
-                span.set_attribute("camera", camera)
-                updated_frame = self.update_frame()
+            updated_frame = self.update_frame()
         except Exception:
             updated_frame = False
             self.active_cameras = []
@@ -556,148 +552,146 @@ class BirdsEyeFrameManager:
 
 
 def output_frames(config: FrigateConfig, video_output_queue):
-    with tracer.start_as_current_span("output_frames"):
-        threading.current_thread().name = "output"
-        setproctitle("frigate.output")
+    threading.current_thread().name = "output"
+    setproctitle("frigate.output")
 
-        stop_event = mp.Event()
+    stop_event = mp.Event()
 
-        def receiveSignal(signalNumber, frame):
-            stop_event.set()
+    def receiveSignal(signalNumber, frame):
+        stop_event.set()
 
-        signal.signal(signal.SIGTERM, receiveSignal)
-        signal.signal(signal.SIGINT, receiveSignal)
+    signal.signal(signal.SIGTERM, receiveSignal)
+    signal.signal(signal.SIGINT, receiveSignal)
 
-        frame_manager = SharedMemoryFrameManager()
-        previous_frames = {}
+    frame_manager = SharedMemoryFrameManager()
+    previous_frames = {}
 
-        # start a websocket server on 8082
-        WebSocketWSGIHandler.http_version = "1.1"
-        websocket_server = make_server(
-            "127.0.0.1",
-            8082,
-            server_class=WSGIServer,
-            handler_class=WebSocketWSGIRequestHandler,
-            app=WebSocketWSGIApplication(handler_cls=WebSocket),
+    # start a websocket server on 8082
+    WebSocketWSGIHandler.http_version = "1.1"
+    websocket_server = make_server(
+        "127.0.0.1",
+        8082,
+        server_class=WSGIServer,
+        handler_class=WebSocketWSGIRequestHandler,
+        app=WebSocketWSGIApplication(handler_cls=WebSocket),
+    )
+    websocket_server.initialize_websockets_manager()
+    websocket_thread = threading.Thread(target=websocket_server.serve_forever)
+
+    converters = {}
+    broadcasters = {}
+
+    for camera, cam_config in config.cameras.items():
+        width = int(
+            cam_config.live.height
+            * (cam_config.frame_shape[1] / cam_config.frame_shape[0])
         )
-        websocket_server.initialize_websockets_manager()
-        websocket_thread = threading.Thread(target=websocket_server.serve_forever)
+        converters[camera] = FFMpegConverter(
+            cam_config.frame_shape[1],
+            cam_config.frame_shape[0],
+            width,
+            cam_config.live.height,
+            cam_config.live.quality,
+        )
+        broadcasters[camera] = BroadcastThread(
+            camera, converters[camera], websocket_server, stop_event
+        )
 
-        converters = {}
-        broadcasters = {}
+    if config.birdseye.enabled:
+        converters["birdseye"] = FFMpegConverter(
+            config.birdseye.width,
+            config.birdseye.height,
+            config.birdseye.width,
+            config.birdseye.height,
+            config.birdseye.quality,
+            config.birdseye.restream,
+        )
+        broadcasters["birdseye"] = BroadcastThread(
+            "birdseye", converters["birdseye"], websocket_server, stop_event
+        )
 
-        for camera, cam_config in config.cameras.items():
-            width = int(
-                cam_config.live.height
-                * (cam_config.frame_shape[1] / cam_config.frame_shape[0])
-            )
-            converters[camera] = FFMpegConverter(
-                cam_config.frame_shape[1],
-                cam_config.frame_shape[0],
-                width,
-                cam_config.live.height,
-                cam_config.live.quality,
-            )
-            broadcasters[camera] = BroadcastThread(
-                camera, converters[camera], websocket_server, stop_event
-            )
+    websocket_thread.start()
 
-        if config.birdseye.enabled:
-            converters["birdseye"] = FFMpegConverter(
-                config.birdseye.width,
-                config.birdseye.height,
-                config.birdseye.width,
-                config.birdseye.height,
-                config.birdseye.quality,
-                config.birdseye.restream,
-            )
-            broadcasters["birdseye"] = BroadcastThread(
-                "birdseye", converters["birdseye"], websocket_server, stop_event
-            )
+    for t in broadcasters.values():
+        t.start()
 
-        websocket_thread.start()
+    birdseye_manager = BirdsEyeFrameManager(config, frame_manager)
 
-        for t in broadcasters.values():
-            t.start()
+    if config.birdseye.restream:
+        birdseye_buffer = frame_manager.create(
+            "birdseye",
+            birdseye_manager.yuv_shape[0] * birdseye_manager.yuv_shape[1],
+        )
 
-        birdseye_manager = BirdsEyeFrameManager(config, frame_manager, stop_event)
-
-        if config.birdseye.restream:
-            birdseye_buffer = frame_manager.create(
-                "birdseye",
-                birdseye_manager.yuv_shape[0] * birdseye_manager.yuv_shape[1],
-            )
-
-        while not stop_event.is_set():
-            try:
-                (
-                    camera,
-                    frame_time,
-                    current_tracked_objects,
-                    motion_boxes,
-                    regions,
-                ) = video_output_queue.get(True, 1)
-            except queue.Empty:
-                continue
-
-            frame_id = f"{camera}{frame_time}"
-
-            frame = frame_manager.get(frame_id, config.cameras[camera].frame_shape_yuv)
-
-            # send camera frame to ffmpeg process if websockets are connected
-            if any(
-                ws.environ["PATH_INFO"].endswith(camera)
-                for ws in websocket_server.manager
-            ):
-                # write to the converter for the camera if clients are listening to the specific camera
-                converters[camera].write(frame.tobytes())
-
-            if config.birdseye.enabled and (
-                config.birdseye.restream
-                or any(
-                    ws.environ["PATH_INFO"].endswith("birdseye")
-                    for ws in websocket_server.manager
-                )
-            ):
-                if birdseye_manager.update(
-                    camera,
-                    len([o for o in current_tracked_objects if not o["stationary"]]),
-                    len(motion_boxes),
-                    frame_time,
-                    frame,
-                ):
-                    frame_bytes = birdseye_manager.frame.tobytes()
-
-                    if config.birdseye.restream:
-                        birdseye_buffer[:] = frame_bytes
-
-                    converters["birdseye"].write(frame_bytes)
-
-            if camera in previous_frames:
-                frame_manager.delete(f"{camera}{previous_frames[camera]}")
-
-            previous_frames[camera] = frame_time
-
-        while not video_output_queue.empty():
+    while not stop_event.is_set():
+        try:
             (
                 camera,
                 frame_time,
                 current_tracked_objects,
                 motion_boxes,
                 regions,
-            ) = video_output_queue.get(True, 10)
+            ) = video_output_queue.get(True, 1)
+        except queue.Empty:
+            continue
 
-            frame_id = f"{camera}{frame_time}"
-            frame = frame_manager.get(frame_id, config.cameras[camera].frame_shape_yuv)
-            frame_manager.delete(frame_id)
+        frame_id = f"{camera}{frame_time}"
 
-        for c in converters.values():
-            c.exit()
-        for b in broadcasters.values():
-            b.join()
-        websocket_server.manager.close_all()
-        websocket_server.manager.stop()
-        websocket_server.manager.join()
-        websocket_server.shutdown()
-        websocket_thread.join()
-        logger.info("exiting output process...")
+        frame = frame_manager.get(frame_id, config.cameras[camera].frame_shape_yuv)
+
+        # send camera frame to ffmpeg process if websockets are connected
+        if any(
+            ws.environ["PATH_INFO"].endswith(camera) for ws in websocket_server.manager
+        ):
+            # write to the converter for the camera if clients are listening to the specific camera
+            converters[camera].write(frame.tobytes())
+
+        if config.birdseye.enabled and (
+            config.birdseye.restream
+            or any(
+                ws.environ["PATH_INFO"].endswith("birdseye")
+                for ws in websocket_server.manager
+            )
+        ):
+            if birdseye_manager.update(
+                camera,
+                len([o for o in current_tracked_objects if not o["stationary"]]),
+                len(motion_boxes),
+                frame_time,
+                frame,
+            ):
+                frame_bytes = birdseye_manager.frame.tobytes()
+
+                if config.birdseye.restream:
+                    birdseye_buffer[:] = frame_bytes
+
+                converters["birdseye"].write(frame_bytes)
+
+        if camera in previous_frames:
+            frame_manager.delete(f"{camera}{previous_frames[camera]}")
+
+        previous_frames[camera] = frame_time
+
+    while not video_output_queue.empty():
+        (
+            camera,
+            frame_time,
+            current_tracked_objects,
+            motion_boxes,
+            regions,
+        ) = video_output_queue.get(True, 10)
+
+        frame_id = f"{camera}{frame_time}"
+        frame = frame_manager.get(frame_id, config.cameras[camera].frame_shape_yuv)
+        frame_manager.delete(frame_id)
+
+    for c in converters.values():
+        c.exit()
+    for b in broadcasters.values():
+        b.join()
+    websocket_server.manager.close_all()
+    websocket_server.manager.stop()
+    websocket_server.manager.join()
+    websocket_server.shutdown()
+    websocket_thread.join()
+    logger.info("exiting output process...")
