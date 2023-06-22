@@ -179,7 +179,6 @@ RUN pip3 install -r requirements.txt
 ADD requirements-wheels.txt /requirements-wheels.txt
 RUN pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
 
-RUN opentelemetry-bootstrap --action=install
 
 # Make this a separate target so it can be built/cached optionally
 FROM wheels as trt-wheels
