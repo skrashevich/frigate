@@ -122,9 +122,9 @@ export default function Events({ path, ...props }) {
       ],
       labels: Object.values(config?.cameras || {})
         .reduce((memo, camera) => {
-          memo = memo.concat(camera?.objects?.track || []);
+          memo = memo.concat(camera?.objects?.track || [], camera?.audio?.listen || []);
           return memo;
-        }, config?.objects?.track || [])
+        }, config?.objects?.track || [], config?.audio?.listen || [])
         .filter((value, i, self) => self.indexOf(value) === i),
       sub_labels: (allSubLabels || []).length > 0 ? [...Object.values(allSubLabels), 'None'] : [],
     }),
