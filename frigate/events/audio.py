@@ -21,6 +21,7 @@ from frigate.const import (
     AUDIO_SAMPLE_RATE,
     CACHE_DIR,
 )
+from frigate.events.external import create_event, end_event
 from frigate.ffmpeg_presets import parse_preset_input
 from frigate.log import LogPipe
 from frigate.object_detection import load_labels
@@ -184,10 +185,7 @@ class AudioEventMaintainer(threading.Thread):
                 "last_detection"
             ] = datetime.datetime.now().timestamp()
         else:
-            resp = requests.post(
-                f"http://127.0.0.1:5000/api/events/{self.config.name}/{label}/create",
-                json={"duration": None},
-            )
+            resp = create_event(self.config.name, label, {"duration": None})
 
             if resp.status_code == 200:
                 event_id = resp.json()[0]["event_id"]
@@ -205,11 +203,11 @@ class AudioEventMaintainer(threading.Thread):
                 now - detection.get("last_detection", now)
                 > self.config.audio.max_not_heard
             ):
-                resp = requests.put(
-                    f"http://127.0.0.1/api/events/{detection['id']}/end",
-                    json={
-                        "end_time": detection["last_detection"]
-                        + self.config.record.events.post_capture
+                resp = end_event(
+                    detection["id"],
+                    {
+                        "end_time": detection["last_detection"] * 1
+                        + self.config.record.events.post_capture * 1
                     },
                 )
                 if resp.status_code == 200:
