@@ -18,6 +18,15 @@ AUDIO_DURATION = 0.975
 AUDIO_FORMAT = "s16le"
 AUDIO_MAX_BIT_RANGE = 32768.0
 AUDIO_SAMPLE_RATE = 16000
+# Attributes
+
+ATTRIBUTE_LABEL_MAP = {
+    "person": ["face", "amazon"],
+    "car": ["ups", "fedex", "amazon", "license_plate"],
+}
+ALL_ATTRIBUTE_LABELS = [
+    item for sublist in ATTRIBUTE_LABEL_MAP.values() for item in sublist
+]
 
 # Regex Consts
 
