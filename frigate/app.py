@@ -12,7 +12,7 @@ from types import FrameType
 from typing import Optional
 
 import psutil
-from opentelemetry import trace
+
 from peewee_migrate import Router
 from playhouse.sqlite_ext import SqliteExtDatabase
 from playhouse.sqliteq import SqliteQueueDatabase
