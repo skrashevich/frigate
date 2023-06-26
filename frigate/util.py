@@ -14,7 +14,6 @@ from collections import Counter
 from collections.abc import Mapping
 from multiprocessing import shared_memory
 from typing import Any, AnyStr, Optional, Tuple
-from ruamel.yaml import YAML
 
 import cv2
 import numpy as np
@@ -23,6 +22,7 @@ import py3nvml.py3nvml as nvml
 import pytz
 import yaml
 from PIL import Image
+from ruamel.yaml import YAML
 
 from frigate.const import REGEX_HTTP_CAMERA_USER_PASS, REGEX_RTSP_CAMERA_USER_PASS
 
