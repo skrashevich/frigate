@@ -14,6 +14,7 @@ export default function CameraMasks({ camera }) {
   const apiHost = useApiHost();
   const imageRef = useRef(null);
   const [snap, setSnap] = useState(true);
+  const [error, setError] = useState();
 
   const cameraConfig = config.cameras[camera];
   const {
@@ -103,8 +104,8 @@ export default function CameraMasks({ camera }) {
   
     if (window.navigator.clipboard && window.navigator.clipboard.writeText) {
       // Use Clipboard API if available
-      window.navigator.clipboard.writeText(textToCopy).catch((err) => {
-       // console.error('Failed to copy text: ', err);
+      window.navigator.clipboard.writeText(textToCopy).catch(() => {
+        // console.error('Failed to copy text: ', err);
       });
     } else {
       // Fallback to document.execCommand('copy')
@@ -131,7 +132,8 @@ export default function CameraMasks({ camera }) {
       const queryParameters = motionMaskPoints
         .map((mask, index) => `cameras.${camera}.motion.mask.${index}=${polylinePointsToPolyline(mask)}`)
         .join('&');
-      const endpoint = `config/set?${queryParameters}`;
+
+      const endpoint = queryParameters ? `config/set?${queryParameters}` : `config/set?cameras.${camera}.motion.mask=`;
       const response = await axios.put(endpoint);
       if (response.status === 200) {
         // handle successful response
@@ -178,7 +180,7 @@ ${Object.keys(zonePoints)
     if (window.navigator.clipboard && window.navigator.clipboard.writeText) {
       // Use Clipboard API if available
       window.navigator.clipboard.writeText(textToCopy).catch((err) => {
-        //console.error('Failed to copy text: ', err);
+        setError(err.response.data.message)
       });
     } else {
       // Fallback to document.execCommand('copy')
@@ -294,6 +296,7 @@ ${Object.keys(objectMaskPoints)
   );
 
   return (
+    
     <div className="flex-col space-y-4 p-2 px-4">
       <Heading size="2xl">{camera} mask & zone creator</Heading>
 
@@ -310,7 +313,7 @@ ${Object.keys(objectMaskPoints)
         }
         header="Instructions"
       />
-
+      {error && <div className="p-4 overflow-scroll text-red-500 whitespace-pre-wrap">{error}</div>}
       <Card
         content={
           <p>
@@ -557,13 +560,13 @@ function MaskValues({
   );
 
 
-  const handleSave = useCallback(
+  /*const handleSave = useCallback(
     (event) => {
       const { key } = event.target.dataset;
       onSave(key);
     },
     [onAdd]
-  );
+  );*/
 
   return (
     <div className="overflow-hidden" onMouseOver={handleMousein} onMouseOut={handleMouseout}>

@@ -1238,7 +1238,7 @@ def update_yaml_file(file_path, key_path, new_value):
             temp = temp[key[0]][key[1]]
         else:
             if key not in temp:
-                temp[key] = {}
+                temp[key] = []
             temp = temp[key]
     print(new_value)
     last_key = key_path[-1]
