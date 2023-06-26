@@ -172,7 +172,7 @@ RUN apt-get -qq update \
     libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev \
     libgl1 \
     # scipy dependencies
-    gcc gfortran libopenblas-dev libopenblas64-0 libopenblas64-dev liblapack-dev && \
+    gcc gfortran libopenblas-dev liblapack-dev && \
     apt-get clean
 
 RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
@@ -217,7 +217,6 @@ ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES="compute,video,utility"
 
 ENV PATH="/usr/lib/btbn-ffmpeg/bin:/usr/local/go2rtc/bin:/usr/local/nginx/sbin:${PATH}"
-ENV OPENBLAS_NUM_THREADS=1
 
 # Install dependencies
 
@@ -301,7 +300,7 @@ COPY --link --from=docs-build /docs/build/ web/docs/
 
 # Frigate final container
 FROM deps AS frigate
-
+ENV OPENBLAS_NUM_THREADS=1
 WORKDIR /opt/frigate/
 COPY --link --from=rootfs / /
 
