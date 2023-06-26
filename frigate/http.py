@@ -864,14 +864,12 @@ def events():
 
 @bp.route("/events/<camera_name>/<label>/create", methods=["POST"])
 def create_event_handler(camera_name, label):
-    json: dict[str, any] = request.get_json(silent=True) or {}
-    return create_event(camera_name, label, json)
+    return create_event(camera_name, label)
 
 
 @bp.route("/events/<event_id>/end", methods=["PUT"])
 def end_event_handler(event_id):
-    json: dict[str, any] = request.get_json(silent=True) or {}
-    return end_event(event_id, json)
+    return end_event(event_id)
 
 
 @bp.route("/config")
