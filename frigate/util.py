@@ -22,7 +22,6 @@ import py3nvml.py3nvml as nvml
 import pytz
 import yaml
 from PIL import Image
-from skimage.transform import resize
 
 from frigate.const import REGEX_HTTP_CAMERA_USER_PASS, REGEX_RTSP_CAMERA_USER_PASS
 
@@ -437,12 +436,11 @@ def copy_yuv_to_position(
     def assign_resized_frame(
         destination_slice, source_slice, resize_dim, interpolation
     ):
-        resized_img = resize(
-            source_slice,
-            output_shape=(resize_dim[0], resize_dim[1]),
-            anti_aliasing=True,
+        source_img = Image.fromarray(source_slice)
+        resized_img = source_img.resize(
+            (resize_dim[1], resize_dim[0]), resample=interpolation
         )
-        destination_slice[:] = resized_img
+        destination_slice[:] = np.array(resized_img)
 
     def resize_copy(
         frame,
