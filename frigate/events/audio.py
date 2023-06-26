@@ -206,7 +206,7 @@ class AudioEventMaintainer(threading.Thread):
                 > self.config.audio.max_not_heard
             ):
                 resp = requests.put(
-                    f"http://127.0.0.1/api/events/{detection['id']}/end",
+                    f"http://127.0.0.1:5000/api/events/{detection['id']}/end",
                     json={
                         "end_time": detection["last_detection"]
                         + self.config.record.events.post_capture
