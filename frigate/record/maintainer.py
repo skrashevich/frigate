@@ -20,9 +20,9 @@ import psutil
 from frigate.config import FrigateConfig, RetainModeEnum
 from frigate.const import CACHE_DIR, MAX_SEGMENT_DURATION, RECORD_DIR
 from frigate.models import Event, Recordings
+from frigate.storage import StorageS3
 from frigate.types import FeatureMetricsTypes
 from frigate.util import area, get_video_properties
-from frigate.storage import StorageS3
 
 logger = logging.getLogger(__name__)
 

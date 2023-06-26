@@ -1,12 +1,12 @@
 import glob
 import logging
 import os
-
 from multiprocessing.synchronize import Event as MpEvent
 from pathlib import Path
 
 from peewee import DatabaseError, DoesNotExist, chunked
 from playhouse.sqliteq import SqliteQueueDatabase
+
 from frigate.config import FrigateConfig, RetainModeEnum
 from frigate.const import RECORD_DIR, SECONDS_IN_DAY
 from frigate.models import Event, Recordings, RecordingsToDelete, Timeline

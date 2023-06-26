@@ -11,12 +11,12 @@ from playhouse.sqliteq import SqliteQueueDatabase
 from setproctitle import setproctitle
 
 from frigate.config import FrigateConfig
+from frigate.database import TimedSqliteQueueDatabase
 from frigate.models import Event, Recordings, RecordingsToDelete, Timeline
 from frigate.record.cleanup import RecordingCleanup
 from frigate.record.maintainer import RecordingMaintainer
 from frigate.types import FeatureMetricsTypes
 from frigate.util import listen
-from frigate.database import TimedSqliteQueueDatabase
 
 logger = logging.getLogger(__name__)
 

@@ -1,16 +1,15 @@
 import logging
+
+import cv2
+import mediapipe as mp
 import numpy as np
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+from pydantic import Extra, Field
+from typing_extensions import Literal
 
 from frigate.detectors.detection_api import DetectionApi
 from frigate.detectors.detector_config import BaseDetectorConfig
-from typing_extensions import Literal
-from pydantic import Extra, Field
-
-import numpy as np
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
-import cv2
 
 logger = logging.getLogger(__name__)
 

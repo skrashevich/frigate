@@ -1,17 +1,17 @@
+import importlib
 import logging
-import numpy as np
 import os
+import pkgutil
+from enum import Enum
+from typing import Dict, List, Optional, Tuple, Union
+
+import numpy as np
+from pydantic import Field, parse_obj_as
+from typing_extensions import Annotated, Literal
+
 from frigate.detectors.detection_api import DetectionApi
 from frigate.detectors.detector_config import BaseDetectorConfig, ModelConfig
 from frigate.util import deep_merge
-from typing import List, Tuple, Dict
-from typing import Union
-from typing import Optional
-from typing_extensions import Annotated, Literal
-from enum import Enum
-from pydantic import Field, parse_obj_as
-import importlib
-import pkgutil
 
 logger = logging.getLogger(__name__)
 

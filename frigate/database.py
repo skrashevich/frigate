@@ -1,8 +1,8 @@
-from playhouse.sqliteq import SqliteQueueDatabase
-from peewee import SENTINEL
+import logging
 import time
 
-import logging
+from peewee import SENTINEL
+from playhouse.sqliteq import SqliteQueueDatabase
 
 logger = logging.getLogger(__name__)
 

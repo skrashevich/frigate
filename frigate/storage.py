@@ -1,19 +1,18 @@
 """Handle storage retention and usage."""
 
 import logging
+import os
 import shutil
+import tempfile
 import threading
+from pathlib import Path
+
 import boto3
 from botocore import UNSIGNED
 from botocore.config import Config
-from botocore.session import Session as boto_session
 from botocore.exceptions import BotoCoreError, ClientError
-from pathlib import Path
-
+from botocore.session import Session as boto_session
 from peewee import fn
-import os
-import tempfile
-
 
 from frigate.config import FrigateConfig
 from frigate.const import RECORD_DIR

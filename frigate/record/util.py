@@ -1,9 +1,11 @@
 """Recordings Utilities."""
 
-import os
-import boto3
-import tempfile
 import logging
+import os
+import tempfile
+
+import boto3
+
 from frigate.config import FrigateConfig
 
 logger = logging.getLogger(__name__)

@@ -10,13 +10,12 @@ from multiprocessing.queues import Queue
 from multiprocessing.synchronize import Event as MpEvent
 from types import FrameType
 from typing import Optional
-from opentelemetry import trace
 
 import psutil
+from opentelemetry import trace
 from peewee_migrate import Router
 from playhouse.sqlite_ext import SqliteExtDatabase
 from playhouse.sqliteq import SqliteQueueDatabase
-from frigate.database import TimedSqliteQueueDatabase
 
 from frigate.comms.dispatcher import Communicator, Dispatcher
 from frigate.comms.mqtt import MqttClient
@@ -31,6 +30,7 @@ from frigate.const import (
     MODEL_CACHE_DIR,
     RECORD_DIR,
 )
+from frigate.database import TimedSqliteQueueDatabase
 from frigate.events.audio import listen_to_audio
 from frigate.events.cleanup import EventCleanup
 from frigate.events.external import ExternalEventProcessor
