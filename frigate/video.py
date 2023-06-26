@@ -734,6 +734,9 @@ def process_frames(
 
     region_min_size = int(max(model_config.height, model_config.width) / 2)
 
+    # Convert tracked_objects.values() to a NumPy array for efficient operations
+    tracked_objects_values = np.array(list(object_tracker.tracked_objects.values()))
+
     while not stop_event.is_set():
         if exit_on_empty and frame_queue.empty():
             logger.info("Exiting track_objects...")
@@ -765,6 +768,13 @@ def process_frames(
         if not detection_enabled.value:
             object_tracker.match_and_update(frame_time, [])
         else:
+            # Compute the intersection with motion_boxes once and store the result
+            intersects_motion_boxes = np.array(
+                [
+                    intersects_any(obj["box"], motion_boxes)
+                    for obj in tracked_objects_values
+                ]
+            )
             # get stationary object ids
             # check every Nth frame for stationary objects
             # disappeared objects are not stationary
@@ -782,7 +792,7 @@ def process_frames(
                 # and it hasn't disappeared
                 and object_tracker.disappeared[obj["id"]] == 0
                 # and it doesn't overlap with any current motion boxes
-                and not intersects_any(obj["box"], motion_boxes)
+                and not intersects_motion_boxes
             ]
 
             # get tracked object boxes that aren't stationary
@@ -865,16 +875,14 @@ def process_frames(
                 # apply non-maxima suppression to suppress weak, overlapping bounding boxes
                 # o[2] is the box of the object: xmin, ymin, xmax, ymax
                 # apply max/min to ensure values do not exceed the known frame size
-                boxes = [
-                    (
-                        o[2][0],
-                        o[2][1],
-                        o[2][2] - o[2][0],
-                        o[2][3] - o[2][1],
-                    )
-                    for o in group
-                ]
-                confidences = [o[1] for o in group]
+
+                boxes = np.array(
+                    [
+                        (o[2][0], o[2][1], o[2][2] - o[2][0], o[2][3] - o[2][1])
+                        for o in group
+                    ]
+                )
+                confidences = np.array([o[1] for o in group])
                 idxs = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
 
                 # add objects

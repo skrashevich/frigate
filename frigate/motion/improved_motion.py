@@ -88,9 +88,10 @@ class ImprovedMotionDetector(MotionDetector):
         frameDelta = cv2.absdiff(resized_frame, cv2.convertScaleAbs(self.avg_frame))
 
         # compute the threshold image for the current frame
-        thresh = cv2.threshold(
-            frameDelta, self.threshold.value, 255, cv2.THRESH_BINARY
-        )[1]
+
+        thresh = cv2.adaptiveThreshold(
+            frameDelta, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+        )
 
         # dilate the thresholded image to fill in holes, then find contours
         # on thresholded image
