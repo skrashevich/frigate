@@ -205,14 +205,19 @@ class AudioEventMaintainer(threading.Thread):
                 now - detection.get("last_detection", now)
                 > self.config.audio.max_not_heard
             ):
-                self.detections[detection["label"]] = None
-                requests.put(
+                resp = requests.put(
                     f"http://127.0.0.1/api/events/{detection['id']}/end",
                     json={
                         "end_time": detection["last_detection"]
                         + self.config.record.events.post_capture
                     },
                 )
+                if resp.status_code == 200:
+                    self.detections[detection["label"]] = None
+                else:
+                    logger.warn(
+                        f"Failed to end audio event {detection['id']} with status code {resp.status_code}"
+                    )
 
     def restart_audio_pipe(self) -> None:
         try:
