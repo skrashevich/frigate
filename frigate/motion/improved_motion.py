@@ -1,6 +1,7 @@
 import cv2
 import imutils
 import numpy as np
+from PIL import Image
 
 from frigate.config import MotionConfig
 from frigate.motion import MotionDetector
@@ -31,11 +32,15 @@ class ImprovedMotionDetector(MotionDetector):
         self.avg_delta = np.zeros(self.motion_frame_size, np.float32)
         self.motion_frame_count = 0
         self.frame_counter = 0
-        resized_mask = cv2.resize(
-            config.mask,
-            dsize=(self.motion_frame_size[1], self.motion_frame_size[0]),
-            interpolation=cv2.INTER_LINEAR,
+        self.interpolation = Image.Resampling.NEAREST
+        mask_image = Image.fromarray(self.config.mask)
+        # Resize the image
+        resized_mask = mask_image.resize(
+            (self.motion_frame_size[1], self.motion_frame_size[0]),
+            resample=self.interpolation,
         )
+        # Convert the image back to a numpy array
+        resized_mask = np.array(resized_mask)
         self.mask = np.where(resized_mask == [0])
         self.save_images = False
         self.calibrating = True
@@ -49,25 +54,28 @@ class ImprovedMotionDetector(MotionDetector):
 
         gray = frame[0 : self.frame_shape[0], 0 : self.frame_shape[1]]
 
-        # resize frame
-        resized_frame = cv2.resize(
-            gray,
-            dsize=(self.motion_frame_size[1], self.motion_frame_size[0]),
-            interpolation=cv2.INTER_LINEAR,
+        # Convert the OpenCV image (numpy array) to a PIL image
+        gray_pil = Image.fromarray(gray)
+
+        # Resize the image using PIL
+        resized_frame = gray_pil.resize(
+            (self.motion_frame_size[1], self.motion_frame_size[0]),
+            resample=self.interpolation,
         )
+
+        # Convert the PIL image back to a numpy array
+        resized_frame = np.array(resized_frame)
 
         if self.save_images:
             resized_saved = resized_frame.copy()
 
-        resized_frame = cv2.GaussianBlur(resized_frame, (3, 3), cv2.BORDER_DEFAULT)
-
+        cv2.GaussianBlur(resized_frame, (3, 3), cv2.BORDER_DEFAULT, dst=resized_frame)
         if self.save_images:
             blurred_saved = resized_frame.copy()
 
         # Improve contrast
         if self.improve_contrast.value:
-            resized_frame = self.clahe.apply(resized_frame)
-
+            self.clahe.apply(resized_frame, dst=resized_frame)
         if self.save_images:
             contrasted_saved = resized_frame.copy()
 
@@ -95,10 +103,8 @@ class ImprovedMotionDetector(MotionDetector):
         # loop over the contours
         total_contour_area = 0
         for c in cnts:
-            # if the contour is big enough, count it as motion
-            contour_area = cv2.contourArea(c)
-            total_contour_area += contour_area
-            if contour_area > self.contour_area.value:
+            if cv2.contourArea(c) > self.contour_area.value:
+                total_contour_area += cv2.contourArea(c)
                 x, y, w, h = cv2.boundingRect(c)
                 motion_boxes.append(
                     (
