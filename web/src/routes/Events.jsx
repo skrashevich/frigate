@@ -624,10 +624,10 @@ export default function Events({ path, ...props }) {
                           <Camera className="h-5 w-5 mr-2 inline" />
                           {event.camera.replaceAll('_', ' ')}
                         </div>
-                        <div className="capitalize  text-sm flex align-center">
+                        { event.zones && ( <div className="capitalize  text-sm flex align-center">
                           <Zone className="w-5 h-5 mr-2 inline" />
-                          {event.zones.join(', ').replaceAll('_', ' ')}
-                        </div>
+                          {event.zones.join(', ').replaceAll('_', ' ')} 
+                        </div> ) }
                       </div>
                       <div class="hidden sm:flex flex-col justify-end mr-2">
                         {event.end_time && event.has_snapshot && (
