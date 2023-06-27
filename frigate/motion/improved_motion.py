@@ -2,7 +2,7 @@ import cv2
 import imutils
 import numpy as np
 from PIL import Image
-
+from collections import deque
 from frigate.config import MotionConfig
 from frigate.motion import MotionDetector
 
@@ -40,7 +40,7 @@ class ImprovedMotionDetector(MotionDetector):
             resample=self.interpolation,
         )
         # Convert the image back to a numpy array
-        resized_mask = np.array(resized_mask)
+        resized_mask = np.asarray(resized_mask)
         self.mask = np.where(resized_mask == [0])
         self.save_images = False
         self.calibrating = True
@@ -49,22 +49,25 @@ class ImprovedMotionDetector(MotionDetector):
         self.contour_area = contour_area
         self.clahe = cv2.createCLAHE(clipLimit=clipLimit, tileGridSize=tileGridSize)
 
+        # Use a deque instead of a list for motion_boxes
+        self.motion_boxes = deque()
+        # Pre-compute constants
+        self.total_pixels = self.motion_frame_size[0] * self.motion_frame_size[1]
+
     def detect(self, frame):
-        motion_boxes = []
+        self.motion_boxes.clear()
 
         gray = frame[0 : self.frame_shape[0], 0 : self.frame_shape[1]]
 
         # Convert the OpenCV image (numpy array) to a PIL image
         gray_pil = Image.fromarray(gray)
 
-        # Resize the image using PIL
-        resized_frame = gray_pil.resize(
+        # Resize the image using cv2
+        resized_frame = cv2.resize(
+            gray,
             (self.motion_frame_size[1], self.motion_frame_size[0]),
-            resample=self.interpolation,
+            interpolation=cv2.INTER_NEAREST,
         )
-
-        # Convert the PIL image back to a numpy array
-        resized_frame = np.array(resized_frame)
 
         if self.save_images:
             resized_saved = resized_frame.copy()
@@ -104,10 +107,11 @@ class ImprovedMotionDetector(MotionDetector):
         # loop over the contours
         total_contour_area = 0
         for c in cnts:
-            if cv2.contourArea(c) > self.contour_area.value:
-                total_contour_area += cv2.contourArea(c)
+            contour_area = cv2.contourArea(c)
+            if contour_area > self.contour_area.value:
+                total_contour_area += contour_area
                 x, y, w, h = cv2.boundingRect(c)
-                motion_boxes.append(
+                self.motion_boxes.append(
                     (
                         int(x * self.resize_factor),
                         int(y * self.resize_factor),
@@ -116,9 +120,7 @@ class ImprovedMotionDetector(MotionDetector):
                     )
                 )
 
-        pct_motion = total_contour_area / (
-            self.motion_frame_size[0] * self.motion_frame_size[1]
-        )
+        pct_motion = total_contour_area / self.total_pixels
 
         # once the motion drops to less than 1% for the first time, assume its calibrated
         if pct_motion < 0.01:
