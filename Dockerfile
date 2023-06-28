@@ -172,8 +172,10 @@ RUN apt-get -qq update \
     libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev \
     libgl1 \
     # scipy dependencies
-    gcc gfortran libopenblas-dev liblapack-dev && \
-    apt-get clean
+    gcc gfortran libopenblas-dev liblapack-dev \
+    # faster-fifo dependencies
+    g++ cython3 && \
+    apt-get clean 
 
 RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip"

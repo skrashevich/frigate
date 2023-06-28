@@ -1,6 +1,7 @@
 boto3 == 1.26.*
 click == 8.1.*
 Flask == 2.3.*
+faster-fifo == 1.4.*
 honeycomb-opentelemetry == 0.2.1b0
 imutils == 0.5.*
 matplotlib == 3.7.*
