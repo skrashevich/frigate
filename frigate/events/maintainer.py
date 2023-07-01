@@ -3,9 +3,10 @@ import logging
 import queue
 import threading
 from enum import Enum
-from faster_fifo import Queue
 from multiprocessing.synchronize import Event as MpEvent
 from typing import Dict
+
+from faster_fifo import Queue
 
 from frigate.config import EventsConfig, FrigateConfig
 from frigate.models import Event
@@ -238,6 +239,6 @@ class EventProcessor(threading.Thread):
             }
 
             try:
-                Event.update(event).execute()
+                Event.update(event).where(Event.id == event_data["id"]).execute()
             except Exception:
                 logger.warning(f"Failed to update manual event: {event_data['id']}")

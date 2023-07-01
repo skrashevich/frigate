@@ -1,8 +1,9 @@
 import cv2
 import imutils
 import numpy as np
-from PIL import Image
+from scipy.ndimage import gaussian_filter
 from collections import deque
+from PIL import Image
 from frigate.config import MotionConfig
 from frigate.motion import MotionDetector
 
@@ -16,9 +17,10 @@ class ImprovedMotionDetector(MotionDetector):
         improve_contrast,
         threshold,
         contour_area,
-        clipLimit=2.0,
-        tileGridSize=(2, 2),
         name="improved",
+        blur_radius=1,
+        interpolation=cv2.INTER_NEAREST,
+        contrast_frame_history=50,
     ):
         self.name = name
         self.config = config
@@ -29,15 +31,12 @@ class ImprovedMotionDetector(MotionDetector):
             config.frame_height * frame_shape[1] // frame_shape[0],
         )
         self.avg_frame = np.zeros(self.motion_frame_size, np.float32)
-        self.avg_delta = np.zeros(self.motion_frame_size, np.float32)
         self.motion_frame_count = 0
         self.frame_counter = 0
-        self.interpolation = Image.Resampling.NEAREST
-        mask_image = Image.fromarray(self.config.mask)
-        # Resize the image
-        resized_mask = mask_image.resize(
-            (self.motion_frame_size[1], self.motion_frame_size[0]),
-            resample=self.interpolation,
+        resized_mask = cv2.resize(
+            config.mask,
+            dsize=(self.motion_frame_size[1], self.motion_frame_size[0]),
+            interpolation=cv2.INTER_AREA,
         )
         # Convert the image back to a numpy array
         resized_mask = np.asarray(resized_mask)
@@ -47,7 +46,11 @@ class ImprovedMotionDetector(MotionDetector):
         self.improve_contrast = improve_contrast
         self.threshold = threshold
         self.contour_area = contour_area
-        self.clahe = cv2.createCLAHE(clipLimit=clipLimit, tileGridSize=tileGridSize)
+        self.blur_radius = blur_radius
+        self.interpolation = interpolation
+        self.contrast_values = np.zeros((contrast_frame_history, 2), np.uint8)
+        self.contrast_values[:, 1:2] = 255
+        self.contrast_values_index = 0
 
         # Use a deque instead of a list for motion_boxes
         self.motion_boxes = deque()
@@ -65,25 +68,44 @@ class ImprovedMotionDetector(MotionDetector):
         # Resize the image using cv2
         resized_frame = cv2.resize(
             gray,
-            (self.motion_frame_size[1], self.motion_frame_size[0]),
-            interpolation=cv2.INTER_NEAREST,
+            dsize=(self.motion_frame_size[1], self.motion_frame_size[0]),
+            interpolation=self.interpolation,
         )
 
         if self.save_images:
             resized_saved = resized_frame.copy()
 
-        cv2.GaussianBlur(resized_frame, (3, 3), cv2.BORDER_DEFAULT, dst=resized_frame)
-        if self.save_images:
-            blurred_saved = resized_frame.copy()
-
         # Improve contrast
         if self.improve_contrast.value:
-            self.clahe.apply(resized_frame, dst=resized_frame)
+            # TODO tracking moving average of min/max to avoid sudden contrast changes
+            minval = np.percentile(resized_frame, 4).astype(np.uint8)
+            maxval = np.percentile(resized_frame, 96).astype(np.uint8)
+            # skip contrast calcs if the image is a single color
+            if minval < maxval:
+                # keep track of the last 50 contrast values
+                self.contrast_values[self.contrast_values_index] = [minval, maxval]
+                self.contrast_values_index += 1
+                if self.contrast_values_index == len(self.contrast_values):
+                    self.contrast_values_index = 0
+
+                avg_min, avg_max = np.mean(self.contrast_values, axis=0)
+
+                resized_frame = np.clip(resized_frame, avg_min, avg_max)
+                resized_frame = (
+                    ((resized_frame - avg_min) / (avg_max - avg_min)) * 255
+                ).astype(np.uint8)
+
         if self.save_images:
             contrasted_saved = resized_frame.copy()
 
         # mask frame
+        # this has to come after contrast improvement
         resized_frame[self.mask] = [255]
+
+        resized_frame = gaussian_filter(resized_frame, sigma=1, radius=self.blur_radius)
+
+        if self.save_images:
+            blurred_saved = resized_frame.copy()
 
         if self.save_images or self.calibrating:
             self.frame_counter += 1
@@ -143,8 +165,8 @@ class ImprovedMotionDetector(MotionDetector):
                 )
             frames = [
                 cv2.cvtColor(resized_saved, cv2.COLOR_GRAY2BGR),
-                cv2.cvtColor(blurred_saved, cv2.COLOR_GRAY2BGR),
                 cv2.cvtColor(contrasted_saved, cv2.COLOR_GRAY2BGR),
+                cv2.cvtColor(blurred_saved, cv2.COLOR_GRAY2BGR),
                 cv2.cvtColor(frameDelta, cv2.COLOR_GRAY2BGR),
                 cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR),
                 thresh_dilated,

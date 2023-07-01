@@ -136,7 +136,7 @@ ADD https://github.com/openvinotoolkit/open_model_zoo/raw/master/data/dataset_cl
 RUN sed -i 's/truck/car/g' openvino-model/coco_91cl_bkgr.txt
 
 # Get Audio Model and labels
-RUN wget -qO cpu_audio_model.tflite https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1?lite-format=tflite
+ADD --link https://storage.googleapis.com/tfhub-lite-models/google/lite-model/yamnet/classification/tflite/1.tflite cpu_audio_model.tflite
 COPY audio-labelmap.txt .
 
 

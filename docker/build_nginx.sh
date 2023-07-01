@@ -380,5 +380,5 @@ CC="$CC" ./configure --prefix=/usr/local/nginx \
     --add-module=../nginx-rtmp-module \
     --with-cc-opt="-O3 -Wno-error=implicit-fallthrough"
 
-make -j$(nproc) && make install
+make CC="ccache gcc" -j$(nproc) && make install
 rm -rf /usr/local/nginx/html /usr/local/nginx/conf/*.default

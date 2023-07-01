@@ -1154,13 +1154,16 @@ def latest_frame(camera_name):
         height = int(request.args.get("h", str(frame.shape[0])))
         width = int(height * frame.shape[1] / frame.shape[0])
 
-        try:
-            frame = cv2.resize(
-                frame, dsize=(width, height), interpolation=cv2.INTER_AREA
+        if frame is None:
+            return "Unable to get valid frame from {}".format(camera_name), 500
+
+        if height < 1 or width < 1:
+            return (
+                "Invalid height / width requested :: {} / {}".format(height, width),
+                400,
             )
-        except Exception as e:
-            logger.debug(f"Failed to resize latest snapshot :: {e}")
-            return "Error resizing snapshot", 500
+
+        frame = cv2.resize(frame, dsize=(width, height), interpolation=cv2.INTER_AREA)
 
         ret, jpg = cv2.imencode(
             ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), resize_quality]
