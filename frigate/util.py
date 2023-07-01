@@ -1,7 +1,9 @@
 import copy
+import ctypes
 import datetime
 import json
 import logging
+import multiprocessing
 import os
 import re
 import shlex
@@ -14,7 +16,7 @@ from collections import Counter
 from collections.abc import Mapping
 from multiprocessing import shared_memory
 from typing import Any, AnyStr, Optional, Tuple
-from faster_fifo import Queue as FFQueue
+from faster_fifo import Queue as FFQueue, DEFAULT_CIRCULAR_BUFFER_SIZE, DEFAULT_TIMEOUT 
 from queue import Full, Empty
 import time
 import cv2
@@ -1271,39 +1273,42 @@ def update_yaml_file(file_path, key_path, new_value):
         yaml.dump(data, f)
 
 
-class LimitedQueue:
-    def __init__(self, maxsize=0, max_size_bytes=None, loads=None, dumps=None):
+class LimitedQueue(FFQueue):
+    def __init__(
+        self,
+        maxsize=0,
+        max_size_bytes=DEFAULT_CIRCULAR_BUFFER_SIZE,
+        loads=None,
+        dumps=None,
+    ):
+        super().__init__(max_size_bytes=max_size_bytes, loads=loads, dumps=dumps)
         self.maxsize = maxsize
-        self.queue = FFQueue(max_size_bytes=max_size_bytes, loads=loads, dumps=dumps)
-        self.size = 0
+        self.size = multiprocessing.RawValue(
+            ctypes.c_int, 0
+        )  # Add a counter for the number of items in the queue
+        self.lock = multiprocessing.Lock()  # Add a lock
 
-    def put(self, item, block=True, timeout=None):
-        if self.maxsize > 0 and self.size >= self.maxsize:
-            if block:
-                start_time = time.time()
-                while self.size >= self.maxsize:
-                    remaining = timeout - (time.time() - start_time)
-                    if remaining <= 0.0:
-                        raise Full
-                    time.sleep(min(remaining, 0.1))
-            else:
-                raise Full
-        self.queue.put(item)
-        self.size += 1
+    def put(self, x, block=True, timeout=DEFAULT_TIMEOUT):
+        with self.lock:  # Acquire the lock
+            if self.maxsize > 0 and self.size.value >= self.maxsize:
+                if block:
+                    start_time = time.time()
+                    while self.size.value >= self.maxsize:
+                        remaining = timeout - (time.time() - start_time)
+                        if remaining <= 0.0:
+                            raise Full
+                        time.sleep(min(remaining, 0.1))
+                else:
+                    raise Full
+            self.size.value += 1
+        return super().put(x, block=block, timeout=timeout)
 
-    def get(self, block=True, timeout=None):
-        if self.size <= 0:
-            if not block:
+    def get(self, block=True, timeout=DEFAULT_TIMEOUT):
+        with self.lock:  # Acquire the lock
+            if self.size.value <= 0 and not block:
                 raise Empty
-            start_time = time.time()
-            while self.size <= 0:
-                remaining = timeout - (time.time() - start_time)
-                if remaining <= 0.0:
-                    raise Empty
-                time.sleep(min(remaining, 0.1))
-        item = self.queue.get()
-        self.size -= 1
-        return item
+            self.size.value -= 1
+        return super().get(block=block, timeout=timeout)
 
     def qsize(self):
         return self.size
