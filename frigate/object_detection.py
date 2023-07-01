@@ -8,6 +8,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 
+import faster_fifo as ff
 import numpy as np
 from setproctitle import setproctitle
 
@@ -73,7 +74,7 @@ class LocalObjectDetector(ObjectDetector):
 
 def run_detector(
     name: str,
-    detection_queue: mp.Queue,
+    detection_queue: ff.Queue,
     out_events: dict[str, mp.Event],
     avg_speed,
     start,

@@ -14,7 +14,9 @@ from collections import Counter
 from collections.abc import Mapping
 from multiprocessing import shared_memory
 from typing import Any, AnyStr, Optional, Tuple
-
+from faster_fifo import Queue as FFQueue
+from queue import Full, Empty
+import time
 import cv2
 import numpy as np
 import psutil
@@ -1267,3 +1269,47 @@ def update_yaml_file(file_path, key_path, new_value):
 
     with open(file_path, "w") as f:
         yaml.dump(data, f)
+
+
+class LimitedQueue:
+    def __init__(self, maxsize=0, max_size_bytes=None, loads=None, dumps=None):
+        self.maxsize = maxsize
+        self.queue = FFQueue(max_size_bytes=max_size_bytes, loads=loads, dumps=dumps)
+        self.size = 0
+
+    def put(self, item, block=True, timeout=None):
+        if self.maxsize > 0 and self.size >= self.maxsize:
+            if block:
+                start_time = time.time()
+                while self.size >= self.maxsize:
+                    remaining = timeout - (time.time() - start_time)
+                    if remaining <= 0.0:
+                        raise Full
+                    time.sleep(min(remaining, 0.1))
+            else:
+                raise Full
+        self.queue.put(item)
+        self.size += 1
+
+    def get(self, block=True, timeout=None):
+        if self.size <= 0:
+            if not block:
+                raise Empty
+            start_time = time.time()
+            while self.size <= 0:
+                remaining = timeout - (time.time() - start_time)
+                if remaining <= 0.0:
+                    raise Empty
+                time.sleep(min(remaining, 0.1))
+        item = self.queue.get()
+        self.size -= 1
+        return item
+
+    def qsize(self):
+        return self.size
+
+    def empty(self):
+        return self.qsize() == 0
+
+    def full(self):
+        return self.qsize() == self.maxsize
