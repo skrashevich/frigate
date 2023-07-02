@@ -1139,7 +1139,7 @@ def latest_frame(camera_name):
 
         if frame is None or datetime.now().timestamp() > (
             current_app.detected_frames_processor.get_current_frame_time(camera_name)
-            + 10
+            + float(current_app.frigate_config.cameras.get(camera_name).retry_interval)
         ):
             if current_app.camera_error_image is None:
                 error_image = glob.glob("/opt/frigate/frigate/images/camera-error.jpg")
