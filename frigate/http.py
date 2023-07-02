@@ -1171,8 +1171,8 @@ def latest_frame(camera_name):
                 "Invalid height / width requested :: {} / {}".format(height, width),
                 400,
             )
-
-        frame = cv2.resize(frame, dsize=(width, height), interpolation=cv2.INTER_AREA)
+        if frame.shape[:2] != (height, width):
+            frame = cv2.resize(frame, dsize=(width, height), interpolation=cv2.INTER_AREA)
 
         ret, jpg = cv2.imencode(
             ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), resize_quality]
