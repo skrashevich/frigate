@@ -917,6 +917,15 @@ def end_event(event_id):
     return jsonify({"success": True, "message": "Event successfully ended."}, 200)
 
 
+@bp.route("/cameras")
+def cameras():
+    cameras = []
+    for camera_name, camera in current_app.frigate_config.cameras.items():
+        cameras.append({"name": camera_name, "enabled": camera.enabled})
+
+    return jsonify(cameras)
+
+
 @bp.route("/config")
 def config():
     config = current_app.frigate_config.dict()

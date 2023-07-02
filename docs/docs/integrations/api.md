@@ -5,6 +5,26 @@ title: HTTP API
 
 A web server is available on port 5000 with the following endpoints.
 
+### `GET /api/cameras`
+
+List of all configured cameras. 
+
+Sample response:
+
+```json
+[
+  {
+    "enabled": false,
+    "name": "camera1"
+  },
+  {
+    "enabled": true,
+    "name": "camera2"
+  }
+]
+```
+
+
 ### `GET /api/<camera_name>`
 
 An mjpeg stream for debugging. Keep in mind the mjpeg endpoint is for debugging only and will put additional load on the system when in use.
