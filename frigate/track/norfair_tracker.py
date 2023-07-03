@@ -24,27 +24,28 @@ def distance(detection: np.array, estimate: np.array) -> float:
     detection_dim = np.diff(detection, axis=0).flatten()
 
     # get bottom center positions
-    detection_position = np.array(
-        [np.average(detection[:, 0]), np.max(detection[:, 1])]
-    )
-    estimate_position = np.array([np.average(estimate[:, 0]), np.max(estimate[:, 1])])
+    detection_position = np.array([detection[:, 0].mean(), detection[:, 1].max()])
+    estimate_position = np.array([estimate[:, 0].mean(), estimate[:, 1].max()])
 
     distance = (detection_position - estimate_position).astype(float)
-    # change in x relative to w
-    distance[0] /= estimate_dim[0]
-    # change in y relative to h
-    distance[1] /= estimate_dim[1]
+    distance /= estimate_dim
 
     # get ratio of widths and heights
     # normalize to 1
-    widths = np.sort([estimate_dim[0], detection_dim[0]])
-    heights = np.sort([estimate_dim[1], detection_dim[1]])
-    width_ratio = widths[1] / widths[0] - 1.0
-    height_ratio = heights[1] / heights[0] - 1.0
+    width_ratio = (
+        max(estimate_dim[0], detection_dim[0]) / min(estimate_dim[0], detection_dim[0])
+        - 1.0
+    )
+    height_ratio = (
+        max(estimate_dim[1], detection_dim[1]) / min(estimate_dim[1], detection_dim[1])
+        - 1.0
+    )
 
     # change vector is relative x,y change and w,h ratio
-    change = np.append(distance, np.array([width_ratio, height_ratio]))
-
+    change = np.empty(4, dtype=float)
+    change[:2] = distance
+    change[2] = width_ratio
+    change[3] = height_ratio
     # calculate euclidean distance of the change vector
     return np.linalg.norm(change)
 
