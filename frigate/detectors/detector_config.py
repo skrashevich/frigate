@@ -7,7 +7,7 @@ from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import requests
-from pydantic import BaseModel, ConfigDict, Extra, Field
+from pydantic import BaseModel, Extra, Field
 from pydantic.fields import PrivateAttr
 
 from frigate.const import AUDIO_DURATION, AUDIO_FORMAT, AUDIO_SAMPLE_RATE
@@ -147,7 +147,6 @@ class ModelConfig(BaseModel):
 
     class Config:
         extra = Extra.forbid
-        protected_namespaces = ("protect_me_", "also_protect_")
 
 
 class BaseDetectorConfig(BaseModel):
