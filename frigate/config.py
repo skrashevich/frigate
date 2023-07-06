@@ -831,7 +831,7 @@ class LoggerConfig(FrigateBaseModel):
     )
 
 
-def verify_config_roles(camera_config: CameraConfig) -> CameraConfig:
+def verify_config_roles(camera_config: CameraConfig) -> None:
     """Verify that roles are setup in the config correctly."""
     assigned_roles = list(
         set([r for i in camera_config.ffmpeg.inputs for r in i.roles])
@@ -841,6 +841,12 @@ def verify_config_roles(camera_config: CameraConfig) -> CameraConfig:
         camera_config.record.enabled = False
         logger.warning(
             f"Camera {camera_config.name} has record enabled, but record is not assigned to an input."
+        )
+
+    if camera_config.rtmp.enabled and "rtmp" not in assigned_roles:
+        camera_config.rtmp.enabled = False
+        logger.warning(
+            f"Camera {camera_config.name} has rtmp enabled, but rtmp is not assigned to an input."
         )
 
     if camera_config.audio.enabled and "audio" not in assigned_roles:
