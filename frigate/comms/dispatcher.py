@@ -1,15 +1,13 @@
 """Handle communication between Frigate and other applications."""
 
 import logging
-
+from abc import ABC, abstractmethod
 from typing import Any, Callable
 
-from abc import ABC, abstractmethod
-
 from frigate.config import FrigateConfig
-from frigate.types import CameraMetricsTypes
+from frigate.ptz import OnvifCommandEnum, OnvifController
+from frigate.types import CameraMetricsTypes, FeatureMetricsTypes
 from frigate.util import restart_frigate
-
 
 logger = logging.getLogger(__name__)
 
@@ -39,17 +37,22 @@ class Dispatcher:
     def __init__(
         self,
         config: FrigateConfig,
+        onvif: OnvifController,
         camera_metrics: dict[str, CameraMetricsTypes],
+        feature_metrics: dict[str, FeatureMetricsTypes],
         communicators: list[Communicator],
     ) -> None:
         self.config = config
+        self.onvif = onvif
         self.camera_metrics = camera_metrics
+        self.feature_metrics = feature_metrics
         self.comms = communicators
 
         for comm in self.comms:
             comm.subscribe(self._receive)
 
         self._camera_settings_handlers: dict[str, Callable] = {
+            "audio": self._on_audio_command,
             "detect": self._on_detect_command,
             "improve_contrast": self._on_motion_improve_contrast_command,
             "motion": self._on_motion_command,
@@ -63,11 +66,20 @@ class Dispatcher:
         """Handle receiving of payload from communicators."""
         if topic.endswith("set"):
             try:
+                # example /cam_name/detect/set payload=ON|OFF
                 camera_name = topic.split("/")[-3]
                 command = topic.split("/")[-2]
                 self._camera_settings_handlers[command](camera_name, payload)
-            except Exception as e:
+            except IndexError:
                 logger.error(f"Received invalid set command: {topic}")
+                return
+        elif topic.endswith("ptz"):
+            try:
+                # example /cam_name/ptz payload=MOVE_UP|MOVE_DOWN|STOP...
+                camera_name = topic.split("/")[-2]
+                self._on_ptz_command(camera_name, payload)
+            except IndexError:
+                logger.error(f"Received invalid ptz command: {topic}")
                 return
         elif topic == "restart":
             restart_frigate()
@@ -114,7 +126,7 @@ class Dispatcher:
         elif payload == "OFF":
             if self.camera_metrics[camera_name]["detection_enabled"].value:
                 logger.error(
-                    f"Turning off motion is not allowed when detection is enabled."
+                    "Turning off motion is not allowed when detection is enabled."
                 )
                 return
 
@@ -175,6 +187,29 @@ class Dispatcher:
         motion_settings.threshold = payload  # type: ignore[union-attr]
         self.publish(f"{camera_name}/motion_threshold/state", payload, retain=True)
 
+    def _on_audio_command(self, camera_name: str, payload: str) -> None:
+        """Callback for audio topic."""
+        audio_settings = self.config.cameras[camera_name].audio
+
+        if payload == "ON":
+            if not self.config.cameras[camera_name].audio.enabled_in_config:
+                logger.error(
+                    "Audio detection must be enabled in the config to be turned on via MQTT."
+                )
+                return
+
+            if not audio_settings.enabled:
+                logger.info(f"Turning on audio detection for {camera_name}")
+                audio_settings.enabled = True
+                self.feature_metrics[camera_name]["audio_enabled"].value = True
+        elif payload == "OFF":
+            if self.feature_metrics[camera_name]["audio_enabled"].value:
+                logger.info(f"Turning off audio detection for {camera_name}")
+                audio_settings.enabled = False
+                self.feature_metrics[camera_name]["audio_enabled"].value = False
+
+        self.publish(f"{camera_name}/audio/state", payload, retain=True)
+
     def _on_recordings_command(self, camera_name: str, payload: str) -> None:
         """Callback for recordings topic."""
         record_settings = self.config.cameras[camera_name].record
@@ -182,17 +217,19 @@ class Dispatcher:
         if payload == "ON":
             if not self.config.cameras[camera_name].record.enabled_in_config:
                 logger.error(
-                    f"Recordings must be enabled in the config to be turned on via MQTT."
+                    "Recordings must be enabled in the config to be turned on via MQTT."
                 )
                 return
 
             if not record_settings.enabled:
                 logger.info(f"Turning on recordings for {camera_name}")
                 record_settings.enabled = True
+                self.feature_metrics[camera_name]["record_enabled"].value = True
         elif payload == "OFF":
-            if record_settings.enabled:
+            if self.feature_metrics[camera_name]["record_enabled"].value:
                 logger.info(f"Turning off recordings for {camera_name}")
                 record_settings.enabled = False
+                self.feature_metrics[camera_name]["record_enabled"].value = False
 
         self.publish(f"{camera_name}/recordings/state", payload, retain=True)
 
@@ -210,3 +247,18 @@ class Dispatcher:
                 snapshots_settings.enabled = False
 
         self.publish(f"{camera_name}/snapshots/state", payload, retain=True)
+
+    def _on_ptz_command(self, camera_name: str, payload: str) -> None:
+        """Callback for ptz topic."""
+        try:
+            if "preset" in payload.lower():
+                command = OnvifCommandEnum.preset
+                param = payload.lower().split("-")[1]
+            else:
+                command = OnvifCommandEnum[payload.lower()]
+                param = ""
+
+            self.onvif.handle_command(camera_name, command, param)
+            logger.info(f"Setting ptz command to {command} for {camera_name}")
+        except KeyError as k:
+            logger.error(f"Invalid PTZ command {payload}: {k}")

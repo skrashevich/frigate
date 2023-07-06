@@ -1,17 +1,20 @@
 import cv2
 import imutils
 import numpy as np
+
 from frigate.config import MotionConfig
+from frigate.motion import MotionDetector
 
 
-class MotionDetector:
+class FrigateMotionDetector(MotionDetector):
     def __init__(
         self,
         frame_shape,
         config: MotionConfig,
-        improve_contrast_enabled,
-        motion_threshold,
-        motion_contour_area,
+        fps: int,
+        improve_contrast,
+        threshold,
+        contour_area,
     ):
         self.config = config
         self.frame_shape = frame_shape
@@ -20,8 +23,8 @@ class MotionDetector:
             config.frame_height,
             config.frame_height * frame_shape[1] // frame_shape[0],
         )
-        self.avg_frame = np.zeros(self.motion_frame_size, np.float)
-        self.avg_delta = np.zeros(self.motion_frame_size, np.float)
+        self.avg_frame = np.zeros(self.motion_frame_size, np.float32)
+        self.avg_delta = np.zeros(self.motion_frame_size, np.float32)
         self.motion_frame_count = 0
         self.frame_counter = 0
         resized_mask = cv2.resize(
@@ -31,9 +34,9 @@ class MotionDetector:
         )
         self.mask = np.where(resized_mask == [0])
         self.save_images = False
-        self.improve_contrast = improve_contrast_enabled
-        self.threshold = motion_threshold
-        self.contour_area = motion_contour_area
+        self.improve_contrast = improve_contrast
+        self.threshold = threshold
+        self.contour_area = contour_area
 
     def detect(self, frame):
         motion_boxes = []
@@ -129,18 +132,10 @@ class MotionDetector:
                             (0, 0, 255),
                             2,
                         )
-                # print("--------")
-                image_row_1 = cv2.hconcat(
-                    [
-                        cv2.cvtColor(frameDelta, cv2.COLOR_GRAY2BGR),
-                        cv2.cvtColor(avg_delta_image, cv2.COLOR_GRAY2BGR),
-                    ]
+
+                cv2.imwrite(
+                    f"debug/frames/frigate-{self.frame_counter}.jpg", thresh_dilated
                 )
-                image_row_2 = cv2.hconcat(
-                    [cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR), thresh_dilated]
-                )
-                combined_image = cv2.vconcat([image_row_1, image_row_2])
-                cv2.imwrite(f"motion/motion-{self.frame_counter}.jpg", combined_image)
 
         if len(motion_boxes) > 0:
             self.motion_frame_count += 1

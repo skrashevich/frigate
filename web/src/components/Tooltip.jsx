@@ -29,7 +29,7 @@ export default function Tooltip({ relativeTo, text }) {
       let newLeft = left - Math.round(tipWidth / 2);
       // too far right
       if (newLeft + tipWidth + TIP_SPACE > windowWidth - window.scrollX) {
-        newLeft = left - tipWidth - TIP_SPACE;
+        newLeft = Math.max(0, left - tipWidth - TIP_SPACE);
         newTop = top - Math.round(tipHeight / 2);
       }
       // too far left
@@ -49,7 +49,7 @@ export default function Tooltip({ relativeTo, text }) {
   const tooltip = (
     <div
       role="tooltip"
-      className={`shadow max-w-lg absolute pointer-events-none bg-gray-900 dark:bg-gray-200 bg-opacity-80 rounded px-2 py-1 transition-transform transition-opacity duration-75 transform scale-90 opacity-0 text-gray-100 dark:text-gray-900 text-sm ${
+      className={`shadow max-w-lg absolute pointer-events-none bg-gray-900 dark:bg-gray-200 bg-opacity-80 rounded px-2 py-1 transition-transform transition-opacity duration-75 transform scale-90 opacity-0 text-gray-100 dark:text-gray-900 text-sm capitalize ${
         position.top >= 0 ? 'opacity-100 scale-100' : ''
       }`}
       ref={ref}

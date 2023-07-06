@@ -1,10 +1,11 @@
 import logging
+
 import numpy as np
+from pydantic import Field
+from typing_extensions import Literal
 
 from frigate.detectors.detection_api import DetectionApi
 from frigate.detectors.detector_config import BaseDetectorConfig
-from typing import Literal
-from pydantic import Extra, Field
 
 try:
     from tflite_runtime.interpreter import Interpreter, load_delegate
@@ -37,7 +38,7 @@ class EdgeTpuTfl(DetectionApi):
             edge_tpu_delegate = load_delegate("libedgetpu.so.1.0", device_config)
             logger.info("TPU found")
             self.interpreter = Interpreter(
-                model_path=detector_config.model.path or "/edgetpu_model.tflite",
+                model_path=detector_config.model.path,
                 experimental_delegates=[edge_tpu_delegate],
             )
         except ValueError:

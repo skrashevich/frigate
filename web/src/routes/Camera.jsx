@@ -14,12 +14,15 @@ import { useCallback, useMemo, useState } from 'preact/hooks';
 import { useApiHost } from '../api';
 import useSWR from 'swr';
 import WebRtcPlayer from '../components/WebRtcPlayer';
-import MsePlayer from '../components/MsePlayer';
+import '../components/MsePlayer';
+import CameraControlPanel from '../components/CameraControlPanel';
+import { baseUrl } from '../api/baseUrl';
 
 const emptyObject = Object.freeze({});
 
 export default function Camera({ camera }) {
   const { data: config } = useSWR('config');
+  const { data: trackedLabels } = useSWR(['labels', { camera }]);
   const apiHost = useApiHost();
   const [showSettings, setShowSettings] = useState(false);
   const [viewMode, setViewMode] = useState('live');
@@ -117,7 +120,12 @@ export default function Camera({ camera }) {
         player = (
           <Fragment>
             <div className="max-w-5xl">
-              <MsePlayer camera={cameraConfig.live.stream_name} />
+              <video-stream
+                mode="mse"
+                src={
+                  new URL(`${baseUrl.replace(/^http/, 'ws')}live/webrtc/api/ws?src=${cameraConfig.live.stream_name}`)
+                }
+              />
             </div>
           </Fragment>
         );
@@ -188,10 +196,17 @@ export default function Camera({ camera }) {
 
       {player}
 
+      {cameraConfig?.onvif?.host && (
+        <div className="dark:bg-gray-800 shadow-md hover:shadow-lg rounded-lg transition-shadow p-4 w-full sm:w-min">
+          <Heading size="sm">Control Panel</Heading>
+          <CameraControlPanel camera={camera} />
+        </div>
+      )}
+
       <div className="space-y-4">
         <Heading size="sm">Tracked objects</Heading>
         <div className="flex flex-wrap justify-start">
-          {cameraConfig.objects.track.map((objectType) => (
+          {(trackedLabels || []).map((objectType) => (
             <Card
               className="mb-4 mr-4"
               key={objectType}

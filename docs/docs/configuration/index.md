@@ -3,7 +3,7 @@ id: index
 title: Configuration File
 ---
 
-For Home Assistant Addon installations, the config file needs to be in the root of your Home Assistant config directory (same location as `configuration.yaml`). It can be named `frigate.yml` or `frigate.yaml`, but if both files exist `frigate.yaml` will be preferred and `frigate.yml` will be ignored.
+For Home Assistant Addon installations, the config file needs to be in the root of your Home Assistant config directory (same location as `configuration.yaml`). It can be named `frigate.yaml` or `frigate.yml`, but if both files exist `frigate.yaml` will be preferred and `frigate.yml` will be ignored.
 
 For all other installation types, the config file should be mapped to `/config/config.yml` inside the container.
 
@@ -56,6 +56,14 @@ mqtt:
 ```
 
 ```yaml
+onvif:
+  host: 10.0.10.10
+  port: 8000
+  user: "{FRIGATE_RTSP_USER}"
+  password: "{FRIGATE_RTSP_PASSWORD}"
+```
+
+```yaml
 mqtt:
   # Optional: Enable mqtt server (default: shown below)
   enabled: True
@@ -105,7 +113,7 @@ detectors:
 # Optional: Database configuration
 database:
   # The path to store the SQLite DB (default: shown below)
-  path: /media/frigate/frigate.db
+  path: /config/frigate.db
 
 # Optional: model modifications
 model:
@@ -129,6 +137,20 @@ model:
   # Optional: Label name modifications. These are merged into the standard labelmap.
   labelmap:
     2: vehicle
+
+# Optional: Audio Events Configuration
+# NOTE: Can be overridden at the camera level
+audio:
+  # Optional: Enable audio events (default: shown below)
+  enabled: False
+  # Optional: Configure the amount of seconds without detected audio to end the event (default: shown below)
+  max_not_heard: 30
+  # Optional: Types of audio to listen for (default: shown below)
+  listen:
+    - bark
+    - scream
+    - speech
+    - yell
 
 # Optional: logger verbosity settings
 logger:
@@ -181,6 +203,11 @@ ffmpeg:
     record: preset-record-generic
     # Optional: output args for rtmp streams (default: shown below)
     rtmp: preset-rtmp-generic
+  # Optional: Time in seconds to wait before ffmpeg retries connecting to the camera. (default: shown below)
+  # If set too low, frigate will retry a connection to the camera's stream too frequently, using up the limited streams some cameras can allow at once
+  # If set too high, then if a ffmpeg crash or camera stream timeout occurs, you could potentially lose up to a maximum of retry_interval second(s) of footage
+  # NOTE: this can be a useful setting for Wireless / Battery cameras to reduce how much footage is potentially lost during a connection timeout.
+  retry_interval: 10
 
 # Optional: Detect configuration
 # NOTE: Can be overridden at the camera level
@@ -198,10 +225,10 @@ detect:
   max_disappeared: 25
   # Optional: Configuration for stationary object tracking
   stationary:
-    # Optional: Frequency for confirming stationary objects (default: shown below)
-    # When set to 0, object detection will not confirm stationary objects until movement is detected.
+    # Optional: Frequency for confirming stationary objects (default: same as threshold)
+    # When set to 1, object detection will run to confirm the object still exists on every frame.
     # If set to 10, object detection will run to confirm the object still exists on every 10th frame.
-    interval: 0
+    interval: 50
     # Optional: Number of frames without a position change for an object to be considered stationary (default: 10x the frame rate or 10s)
     threshold: 50
     # Optional: Define a maximum number of frames for tracking a stationary object (default: not set, track forever)
@@ -217,6 +244,20 @@ detect:
       # Optional: Object specific values
       objects:
         person: 1000
+  # Optional: Milliseconds to offset detect annotations by (default: shown below).
+  # There can often be latency between a recording and the detect process,
+  # especially when using separate streams for detect and record.
+  # Use this setting to make the timeline bounding boxes more closely align
+  # with the recording. The value can be positive or negative.
+  # TIP: Imagine there is an event clip with a person walking from left to right.
+  #      If the event timeline bounding box is consistently to the left of the person
+  #      then the value should be decreased. Similarly, if a person is walking from
+  #      left to right and the bounding box is consistently ahead of the person
+  #      then the value should be increased.
+  # TIP: This offset is dynamic so you can change the value and it will update existing
+  #      events, this makes it easy to tune.
+  # WARNING: Fast moving objects will likely not have the bounding box align.
+  annotation_offset: 0
 
 # Optional: Object configuration
 # NOTE: Can be overridden at the camera level
@@ -253,35 +294,37 @@ motion:
   # Optional: The threshold passed to cv2.threshold to determine if a pixel is different enough to be counted as motion. (default: shown below)
   # Increasing this value will make motion detection less sensitive and decreasing it will make motion detection more sensitive.
   # The value should be between 1 and 255.
-  threshold: 25
-  # Optional: Minimum size in pixels in the resized motion image that counts as motion (default: 30)
+  threshold: 30
+  # Optional: The percentage of the image used to detect lightning or other substantial changes where motion detection
+  #           needs to recalibrate. (default: shown below)
+  # Increasing this value will make motion detection more likely to consider lightning or ir mode changes as valid motion.
+  # Decreasing this value will make motion detection more likely to ignore large amounts of motion such as a person approaching
+  # a doorbell camera.
+  lightning_threshold: 0.8
+  # Optional: Minimum size in pixels in the resized motion image that counts as motion (default: shown below)
   # Increasing this value will prevent smaller areas of motion from being detected. Decreasing will
   # make motion detection more sensitive to smaller moving objects.
   # As a rule of thumb:
-  #  - 15 - high sensitivity
+  #  - 10 - high sensitivity
   #  - 30 - medium sensitivity
   #  - 50 - low sensitivity
-  contour_area: 30
-  # Optional: Alpha value passed to cv2.accumulateWeighted when averaging the motion delta across multiple frames (default: shown below)
-  # Higher values mean the current frame impacts the delta a lot, and a single raindrop may register as motion.
-  # Too low and a fast moving person wont be detected as motion.
-  delta_alpha: 0.2
+  contour_area: 10
   # Optional: Alpha value passed to cv2.accumulateWeighted when averaging frames to determine the background (default: shown below)
   # Higher values mean the current frame impacts the average a lot, and a new object will be averaged into the background faster.
   # Low values will cause things like moving shadows to be detected as motion for longer.
   # https://www.geeksforgeeks.org/background-subtraction-in-an-image-using-concept-of-running-average/
-  frame_alpha: 0.2
+  frame_alpha: 0.01
   # Optional: Height of the resized motion frame  (default: 50)
-  # This operates as an efficient blur alternative. Higher values will result in more granular motion detection at the expense
-  # of higher CPU usage. Lower values result in less CPU, but small changes may not register as motion.
-  frame_height: 50
+  # Higher values will result in more granular motion detection at the expense of higher CPU usage.
+  # Lower values result in less CPU, but small changes may not register as motion.
+  frame_height: 100
   # Optional: motion mask
   # NOTE: see docs for more detailed info on creating masks
   mask: 0,900,1080,900,1080,1920,0,1920
   # Optional: improve contrast (default: shown below)
   # Enables dynamic contrast improvement. This should help improve night detections at the cost of making motion detection more sensitive
   # for daytime.
-  improve_contrast: False
+  improve_contrast: True
   # Optional: Delay when updating camera motion through MQTT from ON -> OFF (default: shown below).
   mqtt_off_delay: 30
 
@@ -369,7 +412,7 @@ rtmp:
   enabled: False
 
 # Optional: Restream configuration
-# Uses https://github.com/AlexxIT/go2rtc (v1.2.0)
+# Uses https://github.com/AlexxIT/go2rtc (v1.5.0)
 go2rtc:
 
 # Optional: jsmpeg stream configuration for WebUI
@@ -424,10 +467,11 @@ cameras:
         # Required: the path to the stream
         # NOTE: path may include environment variables, which must begin with 'FRIGATE_' and be referenced in {}
         - path: rtsp://viewer:{FRIGATE_RTSP_PASSWORD}@10.0.10.10:554/cam/realmonitor?channel=1&subtype=2
-          # Required: list of roles for this stream. valid values are: detect,record,rtmp
-          # NOTICE: In addition to assigning the record and rtmp roles,
+          # Required: list of roles for this stream. valid values are: audio,detect,record,rtmp
+          # NOTICE: In addition to assigning the audio, record, and rtmp roles,
           # they must also be enabled in the camera config.
           roles:
+            - audio
             - detect
             - record
             - rtmp
@@ -459,6 +503,8 @@ cameras:
         # Required: List of x,y coordinates to define the polygon of the zone.
         # NOTE: Presence in a zone is evaluated only based on the bottom center of the objects bounding box.
         coordinates: 545,1077,747,939,788,805
+        # Optional: Number of consecutive frames required for object to be considered present in the zone. Allowed values are 1-10 (default: shown below)
+        inertia: 3
         # Optional: List of objects that can trigger this zone (default: all tracked objects)
         objects:
           - person
@@ -497,6 +543,25 @@ cameras:
       # Optional: Whether or not to show the camera in the Frigate UI (default: shown below)
       dashboard: True
 
+    # Optional: connect to ONVIF camera
+    # to enable PTZ controls.
+    onvif:
+      # Required: host of the camera being connected to.
+      host: 0.0.0.0
+      # Optional: ONVIF port for device (default: shown below).
+      port: 8000
+      # Optional: username for login.
+      # NOTE: Some devices require admin to access ONVIF.
+      user: admin
+      # Optional: password for login.
+      password: admin
+
+    # Optional: Configuration for how to sort the cameras in the Birdseye view.
+    birdseye:
+      # Optional: Adjust sort order of cameras in the Birdseye view. Larger numbers come later (default: shown below)
+      # By default the cameras are sorted alphabetically.
+      order: 0
+
 # Optional
 ui:
   # Optional: Set the default live mode for cameras in the UI (default: shown below)
@@ -531,6 +596,22 @@ ui:
 
 # Optional: Telemetry configuration
 telemetry:
+  # Optional: Enabled network interfaces for bandwidth stats monitoring (default: shown below)
+  network_interfaces:
+    - eth
+    - enp
+    - eno
+    - ens
+    - wl
+    - lo
+  # Optional: Configure system stats
+  stats:
+    # Enable AMD GPU stats (default: shown below)
+    amd_gpu_stats: True
+    # Enable Intel GPU stats (default: shown below)
+    intel_gpu_stats: True
+    # Enable network bandwidth stats monitoring for camera ffmpeg processes, go2rtc, and object detectors. (default: shown below)
+    network_bandwidth: False
   # Optional: Enable the latest version outbound check (default: shown below)
   # NOTE: If you use the HomeAssistant integration, disabling this will prevent it from reporting new versions
   version_check: True

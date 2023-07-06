@@ -62,7 +62,9 @@ Message published for each changed event. The first message is published when th
     "has_clip": false,
     "stationary": false, // whether or not the object is considered stationary
     "motionless_count": 0, // number of frames the object has been motionless
-    "position_changes": 2 // number of times the object has moved from a stationary position
+    "position_changes": 2, // number of times the object has moved from a stationary position
+    "attributes": [], // set of unique attributes that have been identified on the object
+    "current_attributes": [] // detailed data about the current attributes in this frame
   },
   "after": {
     "id": "1607123955.475377-mxklsc",
@@ -87,7 +89,16 @@ Message published for each changed event. The first message is published when th
     "has_clip": false,
     "stationary": false, // whether or not the object is considered stationary
     "motionless_count": 0, // number of frames the object has been motionless
-    "position_changes": 2 // number of times the object has changed position
+    "position_changes": 2, // number of times the object has changed position
+    "attributes": ["face"], // set of unique attributes that have been identified on the object
+    "current_attributes": [
+      // detailed data about the current attributes in this frame
+      {
+        "label": "face",
+        "box": [442, 506, 534, 524],
+        "score": 0.64
+      }
+    ]
   }
 }
 ```
@@ -98,11 +109,19 @@ Same data available at `/api/stats` published at a configurable interval.
 
 ### `frigate/<camera_name>/detect/set`
 
-Topic to turn detection for a camera on and off. Expected values are `ON` and `OFF`.
+Topic to turn object detection for a camera on and off. Expected values are `ON` and `OFF`.
 
 ### `frigate/<camera_name>/detect/state`
 
-Topic with current state of detection for a camera. Published values are `ON` and `OFF`.
+Topic with current state of object detection for a camera. Published values are `ON` and `OFF`.
+
+### `frigate/<camera_name>/audio/set`
+
+Topic to turn audio detection for a camera on and off. Expected values are `ON` and `OFF`.
+
+### `frigate/<camera_name>/audio/state`
+
+Topic with current state of audio detection for a camera. Published values are `ON` and `OFF`.
 
 ### `frigate/<camera_name>/recordings/set`
 
@@ -158,3 +177,14 @@ Topic to adjust motion contour area for a camera. Expected value is an integer.
 ### `frigate/<camera_name>/motion_contour_area/state`
 
 Topic with current motion contour area for a camera. Published value is an integer.
+
+### `frigate/<camera_name>/ptz`
+
+Topic to send PTZ commands to camera.
+
+| Command                | Description                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| `preset-<preset_name>` | send command to move to preset with name `<preset_name>`                                  |
+| `MOVE_<dir>`           | send command to continuously move in `<dir>`, possible values are [UP, DOWN, LEFT, RIGHT] |
+| `ZOOM_<dir>`           | send command to continuously zoom `<dir>`, possible values are [IN, OUT]                  |
+| `STOP`                 | send command to stop moving                                                               |

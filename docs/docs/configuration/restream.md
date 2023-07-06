@@ -7,7 +7,7 @@ title: Restream
 
 Frigate can restream your video feed as an RTSP feed for other applications such as Home Assistant to utilize it at `rtsp://<frigate_host>:8554/<camera_name>`. Port 8554 must be open. [This allows you to use a video feed for detection in Frigate and Home Assistant live view at the same time without having to make two separate connections to the camera](#reduce-connections-to-camera). The video feed is copied from the original video feed directly to avoid re-encoding. This feed does not include any annotation by Frigate.
 
-Frigate uses [go2rtc](https://github.com/AlexxIT/go2rtc/tree/v1.2.0) to provide its restream and MSE/WebRTC capabilities. The go2rtc config is hosted at the `go2rtc` in the config, see [go2rtc docs](https://github.com/AlexxIT/go2rtc/tree/v1.2.0#configuration) for more advanced configurations and features.
+Frigate uses [go2rtc](https://github.com/AlexxIT/go2rtc/tree/v1.5.0) to provide its restream and MSE/WebRTC capabilities. The go2rtc config is hosted at the `go2rtc` in the config, see [go2rtc docs](https://github.com/AlexxIT/go2rtc/tree/v1.5.0#configuration) for more advanced configurations and features.
 
 :::note
 
@@ -67,6 +67,7 @@ cameras:
           roles:
             - record
             - detect
+            - audio # <- only necessary if audio detection is enabled
   http_cam:
     ffmpeg:
       output_args:
@@ -77,6 +78,7 @@ cameras:
           roles:
             - record
             - detect
+            - audio # <- only necessary if audio detection is enabled
 ```
 
 ### With Sub Stream
@@ -86,7 +88,7 @@ Two connections are made to the camera. One for the sub stream, one for the rest
 ```yaml
 go2rtc:
   streams:
-    rtsp_cam: 
+    rtsp_cam:
       - rtsp://192.168.1.5:554/live0 # <- stream which supports video & aac audio. This is only supported for rtsp streams, http must use ffmpeg
       - "ffmpeg:rtsp_cam#audio=opus" # <- copy of the stream which transcodes audio to opus
     rtsp_cam_sub:
@@ -112,6 +114,7 @@ cameras:
         - path: rtsp://127.0.0.1:8554/rtsp_cam_sub # <--- the name here must match the name of the camera_sub in restream
           input_args: preset-rtsp-restream
           roles:
+            - audio # <- only necessary if audio detection is enabled
             - detect
   http_cam:
     ffmpeg:
@@ -125,12 +128,13 @@ cameras:
         - path: rtsp://127.0.0.1:8554/http_cam_sub # <--- the name here must match the name of the camera_sub in restream
           input_args: preset-rtsp-restream
           roles:
+            - audio # <- only necessary if audio detection is enabled
             - detect
 ```
 
 ## Advanced Restream Configurations
 
-The [exec](https://github.com/AlexxIT/go2rtc/tree/v1.2.0#source-exec) source in go2rtc can be used for custom ffmpeg commands. An example is below:
+The [exec](https://github.com/AlexxIT/go2rtc/tree/v1.5.0#source-exec) source in go2rtc can be used for custom ffmpeg commands. An example is below:
 
 NOTE: The output will need to be passed with two curly braces `{{output}}`
 

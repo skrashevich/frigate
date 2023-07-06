@@ -3,6 +3,7 @@ import { route } from 'preact-router';
 import ActivityIndicator from '../components/ActivityIndicator';
 import Heading from '../components/Heading';
 import { Tabs, TextTab } from '../components/Tabs';
+import Link from '../components/Link';
 import { useApiHost } from '../api';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
@@ -26,6 +27,9 @@ import Dialog from '../components/Dialog';
 import MultiSelect from '../components/MultiSelect';
 import { formatUnixTimestampToDateTime, getDurationFromTimestamps } from '../utils/dateUtil';
 import TimeAgo from '../components/TimeAgo';
+import Timepicker from '../components/TimePicker';
+import TimelineSummary from '../components/TimelineSummary';
+import TimelineEventOverlay from '../components/TimelineEventOverlay';
 
 const API_LIMIT = 25;
 
@@ -56,13 +60,21 @@ export default function Events({ path, ...props }) {
     showDownloadMenu: false,
     showDatePicker: false,
     showCalendar: false,
-    showPlusConfig: false,
+    showPlusSubmit: false,
+  });
+  const [plusSubmitEvent, setPlusSubmitEvent] = useState({
+    id: null,
+    label: null,
+    validBox: null,
   });
   const [uploading, setUploading] = useState([]);
   const [viewEvent, setViewEvent] = useState();
+  const [eventOverlay, setEventOverlay] = useState();
   const [eventDetailType, setEventDetailType] = useState('clip');
   const [downloadEvent, setDownloadEvent] = useState({
     id: null,
+    label: null,
+    box: null,
     has_clip: false,
     has_snapshot: false,
     plus_id: undefined,
@@ -95,6 +107,7 @@ export default function Events({ path, ...props }) {
 
   const { data: config } = useSWR('config');
 
+  const { data: allLabels } = useSWR(['labels']);
   const { data: allSubLabels } = useSWR(['sub_labels', { split_joined: 1 }]);
 
   const filterValues = useMemo(
@@ -109,15 +122,10 @@ export default function Events({ path, ...props }) {
           .filter((value, i, self) => self.indexOf(value) === i),
         'None',
       ],
-      labels: Object.values(config?.cameras || {})
-        .reduce((memo, camera) => {
-          memo = memo.concat(camera?.objects?.track || []);
-          return memo;
-        }, config?.objects?.track || [])
-        .filter((value, i, self) => self.indexOf(value) === i),
+      labels: Object.values(allLabels || {}),
       sub_labels: (allSubLabels || []).length > 0 ? [...Object.values(allSubLabels), 'None'] : [],
     }),
-    [config, allSubLabels]
+    [config, allLabels, allSubLabels]
   );
 
   const onSave = async (e, eventId, save) => {
@@ -180,6 +188,14 @@ export default function Events({ path, ...props }) {
     onFilter(name, items);
   };
 
+  const onEventFrameSelected = (event, frame, seekSeconds) => {
+    if (this.player) {
+      this.player.pause();
+      this.player.currentTime(seekSeconds);
+      setEventOverlay(frame);
+    }
+  };
+
   const datePicker = useRef();
 
   const downloadButton = useRef();
@@ -188,6 +204,8 @@ export default function Events({ path, ...props }) {
     e.stopPropagation();
     setDownloadEvent((_prev) => ({
       id: event.id,
+      box: event?.data?.box || event.box,
+      label: event.label,
       has_clip: event.has_clip,
       has_snapshot: event.has_snapshot,
       plus_id: event.plus_id,
@@ -195,6 +213,16 @@ export default function Events({ path, ...props }) {
     }));
     downloadButton.current = e.target;
     setState({ ...state, showDownloadMenu: true });
+  };
+
+  const showSubmitToPlus = (event_id, label, box, e) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    // if any of the box coordinates are > 1, then the box data is from an older version
+    // and not valid to submit to plus with the snapshot image
+    setPlusSubmitEvent({ id: event_id, label, validBox: !box.some((d) => d > 1) });
+    setState({ ...state, showDownloadMenu: false, showPlusSubmit: true });
   };
 
   const handleSelectDateRange = useCallback(
@@ -241,23 +269,16 @@ export default function Events({ path, ...props }) {
     [size, setSize, isValidating, isDone]
   );
 
-  const onSendToPlus = async (id, e) => {
-    if (e) {
-      e.stopPropagation();
-    }
-
+  const onSendToPlus = async (id, false_positive, validBox) => {
     if (uploading.includes(id)) {
-      return;
-    }
-
-    if (!config.plus.enabled) {
-      setState({ ...state, showDownloadMenu: false, showPlusConfig: true });
       return;
     }
 
     setUploading((prev) => [...prev, id]);
 
-    const response = await axios.post(`events/${id}/plus`);
+    const response = false_positive
+      ? await axios.put(`events/${id}/false_positive`)
+      : await axios.post(`events/${id}/plus`, validBox ? { include_annotation: 1 } : {});
 
     if (response.status === 200) {
       mutate(
@@ -279,6 +300,8 @@ export default function Events({ path, ...props }) {
     if (state.showDownloadMenu && downloadEvent.id === id) {
       setState({ ...state, showDownloadMenu: false });
     }
+
+    setState({ ...state, showPlusSubmit: false });
   };
 
   const handleEventDetailTabChange = (index) => {
@@ -365,12 +388,12 @@ export default function Events({ path, ...props }) {
               download
             />
           )}
-          {(downloadEvent.end_time && downloadEvent.has_snapshot && !downloadEvent.plus_id) && (
+          {downloadEvent.end_time && downloadEvent.has_snapshot && !downloadEvent.plus_id && (
             <MenuItem
               icon={UploadPlus}
               label={uploading.includes(downloadEvent.id) ? 'Uploading...' : 'Send to Frigate+'}
               value="plus"
-              onSelect={() => onSendToPlus(downloadEvent.id)}
+              onSelect={() => showSubmitToPlus(downloadEvent.id, downloadEvent.label, downloadEvent.box)}
             />
           )}
           {downloadEvent.plus_id && (
@@ -412,38 +435,117 @@ export default function Events({ path, ...props }) {
           />
         </Menu>
       )}
+
       {state.showCalendar && (
-        <Menu
-          className="rounded-t-none"
-          onDismiss={() => setState({ ...state, showCalendar: false })}
-          relativeTo={datePicker}
-        >
-          <Calendar
-            onChange={handleSelectDateRange}
-            dateRange={{ before: searchParams.before * 1000 || null, after: searchParams.after * 1000 || null }}
-            close={() => setState({ ...state, showCalendar: false })}
-          />
-        </Menu>
-      )}
-      {state.showPlusConfig && (
-        <Dialog>
-          <div className="p-4">
-            <Heading size="lg">Setup a Frigate+ Account</Heading>
-            <p className="mb-2">In order to submit images to Frigate+, you first need to setup an account.</p>
-            <a
-              className="text-blue-500 hover:underline"
-              href="https://plus.frigate.video"
-              target="_blank"
-              rel="noopener noreferrer"
+        <span>
+          <Menu
+            className="rounded-t-none"
+            onDismiss={() => setState({ ...state, showCalendar: false })}
+            relativeTo={datePicker}
+          >
+            <Calendar
+              onChange={handleSelectDateRange}
+              dateRange={{ before: searchParams.before * 1000 || null, after: searchParams.after * 1000 || null }}
+              close={() => setState({ ...state, showCalendar: false })}
             >
-              https://plus.frigate.video
-            </a>
-          </div>
-          <div className="p-2 flex justify-start flex-row-reverse space-x-2">
-            <Button className="ml-2" onClick={() => setState({ ...state, showPlusConfig: false })} type="text">
-              Close
-            </Button>
-          </div>
+              <Timepicker
+                dateRange={{ before: searchParams.before * 1000 || null, after: searchParams.after * 1000 || null }}
+                onChange={handleSelectDateRange}
+              />
+            </Calendar>
+          </Menu>
+        </span>
+      )}
+      {state.showPlusSubmit && (
+        <Dialog>
+          {config.plus.enabled ? (
+            <>
+              <div className="p-4">
+                <Heading size="lg">Submit to Frigate+</Heading>
+
+                <img
+                  className="flex-grow-0"
+                  src={`${apiHost}/api/events/${plusSubmitEvent.id}/snapshot.jpg`}
+                  alt={`${plusSubmitEvent.label}`}
+                />
+
+                {plusSubmitEvent.validBox ? (
+                  <p className="mb-2">
+                    Objects in locations you want to avoid are not false positives. Submitting them as false positives
+                    will confuse the model.
+                  </p>
+                ) : (
+                  <p className="mb-2">
+                    Events prior to version 0.13 can only be submitted to Frigate+ without annotations.
+                  </p>
+                )}
+              </div>
+              {plusSubmitEvent.validBox ? (
+                <div className="p-2 flex justify-start flex-row-reverse space-x-2">
+                  <Button className="ml-2" onClick={() => setState({ ...state, showPlusSubmit: false })} type="text">
+                    {uploading.includes(plusSubmitEvent.id) ? 'Close' : 'Cancel'}
+                  </Button>
+                  <Button
+                    className="ml-2"
+                    color="red"
+                    onClick={() => onSendToPlus(plusSubmitEvent.id, true, plusSubmitEvent.validBox)}
+                    disabled={uploading.includes(plusSubmitEvent.id)}
+                    type="text"
+                  >
+                    This is not a {plusSubmitEvent.label}
+                  </Button>
+                  <Button
+                    className="ml-2"
+                    color="green"
+                    onClick={() => onSendToPlus(plusSubmitEvent.id, false, plusSubmitEvent.validBox)}
+                    disabled={uploading.includes(plusSubmitEvent.id)}
+                    type="text"
+                  >
+                    This is a {plusSubmitEvent.label}
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-2 flex justify-start flex-row-reverse space-x-2">
+                  <Button
+                    className="ml-2"
+                    onClick={() => setState({ ...state, showPlusSubmit: false })}
+                    disabled={uploading.includes(plusSubmitEvent.id)}
+                    type="text"
+                  >
+                    {uploading.includes(plusSubmitEvent.id) ? 'Close' : 'Cancel'}
+                  </Button>
+                  <Button
+                    className="ml-2"
+                    onClick={() => onSendToPlus(plusSubmitEvent.id, false, plusSubmitEvent.validBox)}
+                    disabled={uploading.includes(plusSubmitEvent.id)}
+                    type="text"
+                  >
+                    Submit to Frigate+
+                  </Button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="p-4">
+                <Heading size="lg">Setup a Frigate+ Account</Heading>
+                <p className="mb-2">In order to submit images to Frigate+, you first need to setup an account.</p>
+                <a
+                  className="text-blue-500 hover:underline"
+                  href="https://plus.frigate.video"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  https://plus.frigate.video
+                </a>
+              </div>
+              <div className="p-2 flex justify-start flex-row-reverse space-x-2">
+                <Button className="ml-2" onClick={() => setState({ ...state, showPlusSubmit: false })} type="text">
+                  Close
+                </Button>
+              </div>
+            </>
+          )}
         </Dialog>
       )}
       {deleteFavoriteState.showDeleteFavorite && (
@@ -503,7 +605,9 @@ export default function Events({ path, ...props }) {
                           {event.sub_label
                             ? `${event.label.replaceAll('_', ' ')}: ${event.sub_label.replaceAll('_', ' ')}`
                             : event.label.replaceAll('_', ' ')}
-                          ({(event.top_score * 100).toFixed(0)}%)
+                          {(event?.data?.top_score || event.top_score || 0) == 0
+                            ? null
+                            : ` (${((event?.data?.top_score || event.top_score) * 100).toFixed(0)}%)`}
                         </div>
                         <div className="text-sm flex">
                           <Clock className="h-5 w-5 mr-2 inline" />
@@ -526,15 +630,25 @@ export default function Events({ path, ...props }) {
                         </div>
                       </div>
                       <div class="hidden sm:flex flex-col justify-end mr-2">
-                        {(event.end_time && event.has_snapshot) && (
+                        {event.end_time && event.has_snapshot && (
                           <Fragment>
                             {event.plus_id ? (
-                              <div className="uppercase text-xs">Sent to Frigate+</div>
+                              <div className="uppercase text-xs underline">
+                                <Link
+                                  href={`https://plus.frigate.video/dashboard/edit-image/?id=${event.plus_id}`}
+                                  target="_blank"
+                                  rel="nofollow"
+                                >
+                                  Edit in Frigate+
+                                </Link>
+                              </div>
                             ) : (
                               <Button
                                 color="gray"
                                 disabled={uploading.includes(event.id)}
-                                onClick={(e) => onSendToPlus(event.id, e)}
+                                onClick={(e) =>
+                                  showSubmitToPlus(event.id, event.label, event?.data?.box || event.box, e)
+                                }
                               >
                                 {uploading.includes(event.id) ? 'Uploading...' : 'Send to Frigate+'}
                               </Button>
@@ -573,20 +687,45 @@ export default function Events({ path, ...props }) {
 
                         <div>
                           {eventDetailType == 'clip' && event.has_clip ? (
-                            <VideoPlayer
-                              options={{
-                                preload: 'auto',
-                                autoplay: true,
-                                sources: [
-                                  {
-                                    src: `${apiHost}vod/event/${event.id}/master.m3u8`,
-                                    type: 'application/vnd.apple.mpegurl',
-                                  },
-                                ],
-                              }}
-                              seekOptions={{ forward: 10, back: 5 }}
-                              onReady={() => {}}
-                            />
+                            <div>
+                              <TimelineSummary
+                                event={event}
+                                onFrameSelected={(frame, seekSeconds) =>
+                                  onEventFrameSelected(event, frame, seekSeconds)
+                                }
+                              />
+                              <div>
+                                <VideoPlayer
+                                  options={{
+                                    preload: 'auto',
+                                    autoplay: true,
+                                    sources: [
+                                      {
+                                        src: `${apiHost}vod/event/${event.id}/master.m3u8`,
+                                        type: 'application/vnd.apple.mpegurl',
+                                      },
+                                    ],
+                                  }}
+                                  seekOptions={{ forward: 10, backward: 5 }}
+                                  onReady={(player) => {
+                                    this.player = player;
+                                    this.player.on('playing', () => {
+                                      setEventOverlay(undefined);
+                                    });
+                                  }}
+                                  onDispose={() => {
+                                    this.player = null;
+                                  }}
+                                >
+                                  {eventOverlay ? (
+                                    <TimelineEventOverlay
+                                      eventOverlay={eventOverlay}
+                                      cameraConfig={config.cameras[event.camera]}
+                                    />
+                                  ) : null}
+                                </VideoPlayer>
+                              </div>
+                            </div>
                           ) : null}
 
                           {eventDetailType == 'image' || !event.has_clip ? (
@@ -598,7 +737,9 @@ export default function Events({ path, ...props }) {
                                     ? `${apiHost}/api/events/${event.id}/snapshot.jpg`
                                     : `${apiHost}/api/events/${event.id}/thumbnail.jpg`
                                 }
-                                alt={`${event.label} at ${(event.top_score * 100).toFixed(0)}% confidence`}
+                                alt={`${event.label} at ${((event?.data?.top_score || event.top_score) * 100).toFixed(
+                                  0
+                                )}% confidence`}
                               />
                             </div>
                           ) : null}
