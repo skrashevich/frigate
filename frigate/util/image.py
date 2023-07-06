@@ -8,15 +8,7 @@ from typing import AnyStr, Optional
 
 import cv2
 import numpy as np
-import psutil
-import py3nvml.py3nvml as nvml
-import pytz
-import yaml
-from faster_fifo import DEFAULT_CIRCULAR_BUFFER_SIZE, DEFAULT_TIMEOUT
-from faster_fifo import Queue as FFQueue
 from PIL import Image
-
-from frigate.const import REGEX_HTTP_CAMERA_USER_PASS, REGEX_RTSP_CAMERA_USER_PASS
 
 logger = logging.getLogger(__name__)
 
