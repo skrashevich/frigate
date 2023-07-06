@@ -27,6 +27,7 @@ from frigate.util import (
     deep_merge,
     escape_special_characters,
     get_ffmpeg_arg_list,
+    get_video_properties,
     load_config_with_no_duplicates,
 )
 
@@ -42,6 +43,7 @@ FRIGATE_ENV_VARS = {k: v for k, v in os.environ.items() if k.startswith("FRIGATE
 DEFAULT_TRACKED_OBJECTS = ["person"]
 DEFAULT_LISTEN_AUDIO = ["bark", "speech", "yell", "scream"]
 DEFAULT_DETECTORS = {"cpu": {"type": "cpu"}}
+DEFAULT_DETECT_DIMENSIONS = {"width": 1280, "height": 720}
 
 
 class FrigateBaseModel(BaseModel):
@@ -264,8 +266,8 @@ class StationaryConfig(FrigateBaseModel):
 
 
 class DetectConfig(FrigateBaseModel):
-    height: int = Field(default=720, title="Height of the stream for the detect role.")
-    width: int = Field(default=1280, title="Width of the stream for the detect role.")
+    height: Optional[int] = Field(title="Height of the stream for the detect role.")
+    width: Optional[int] = Field(title="Width of the stream for the detect role.")
     fps: int = Field(
         default=5, title="Number of frames per second to process through detection."
     )
@@ -985,6 +987,32 @@ class FrigateConfig(FrigateBaseModel):
             camera_config: CameraConfig = CameraConfig.parse_obj(
                 {"name": name, **merged_config}
             )
+
+            if (
+                camera_config.detect.height is None
+                or camera_config.detect.width is None
+            ):
+                for input in camera_config.ffmpeg.inputs:
+                    if "detect" in input.roles:
+                        stream_info = {"width": 0, "height": 0}
+                        try:
+                            stream_info = get_video_properties(input.path)
+                        except Exception:
+                            logger.warn(
+                                f"Error detecting stream resolution automatically for {input.path} Applying default values."
+                            )
+                            stream_info = {"width": 0, "height": 0}
+
+                        camera_config.detect.width = (
+                            stream_info["width"]
+                            if stream_info.get("width")
+                            else DEFAULT_DETECT_DIMENSIONS["width"]
+                        )
+                        camera_config.detect.height = (
+                            stream_info["height"]
+                            if stream_info.get("height")
+                            else DEFAULT_DETECT_DIMENSIONS["height"]
+                        )
 
             # Default max_disappeared configuration
             max_disappeared = camera_config.detect.fps * 5
