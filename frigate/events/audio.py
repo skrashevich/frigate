@@ -187,7 +187,7 @@ class AudioEventMaintainer(threading.Thread):
         else:
             resp = requests.post(
                 f"{FRIGATE_LOCALHOST}/api/events/{self.config.name}/{label}/create",
-                json={"duration": None},
+                json={"duration": None, "source_type": "audio"},
             )
 
             if resp.status_code == 200:
@@ -209,7 +209,6 @@ class AudioEventMaintainer(threading.Thread):
                 now - detection.get("last_detection", now)
                 > self.config.audio.max_not_heard
             ):
-                # self.detections[detection["label"]] = None
                 resp = requests.put(
                     f"{FRIGATE_LOCALHOST}/api/events/{detection['id']}/end",
                     json={
