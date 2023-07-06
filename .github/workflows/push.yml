@@ -1,0 +1,66 @@
+name: Publish Docker
+on:
+  push:
+    branches:
+      - '*'
+  workflow_dispatch:
+
+# only run the latest commit to avoid cache overwrites
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [frigate]
+        platform: ["linux/amd64,linux/arm64"]
+        include:
+          - target: frigate-tensorrt
+            platform: linux/amd64
+    steps:
+    - name: Free disk space
+      if: matrix.target == 'frigate-tensorrt'
+      run: |
+        curl -L -k https://raw.githubusercontent.com/apache/flink/master/tools/azure-pipelines/free_disk_space.sh | bash
+    - uses: actions/checkout@v3
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    - name: Configure QEMU
+      if: matrix.target == 'frigate'
+      run: |
+        sudo apt-get update -q -y
+        sudo apt-get -qq install -y qemu qemu-user-static
+        docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+    - name: Create version file
+      run: make version
+    - name: Create short sha
+      run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+    - name: Log in to the Container registry
+      uses: docker/login-action@v2
+      with:
+        registry: docker.io
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    - name: Log in to the Container registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Build and push
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        platforms: ${{ matrix.platform }}
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ github.ref_name }}-${{ env.SHORT_SHA }}
+          ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ github.ref_name }}
+          ghcr.io/${{ github.actor }}/${{ matrix.target }}:${{ github.ref_name }}-${{ env.SHORT_SHA }}
+          ghcr.io/${{ github.actor }}/${{ matrix.target }}:${{ github.ref_name }}
+        target: ${{ matrix.target }}
+        cache-from: type=gha,scope=${{ matrix.target }}
+        cache-to: type=gha,scope=${{ matrix.target }}
