@@ -1,7 +1,9 @@
 import { h, Fragment } from 'preact';
+import { useState } from 'preact/hooks';
 import ActivityIndicator from '../components/ActivityIndicator';
 import Card from '../components/Card';
 import CameraImage from '../components/CameraImage';
+import JSMpegPlayer from '../components/JSMpegPlayer';
 import AudioIcon from '../icons/Audio';
 import ClipIcon from '../icons/Clip';
 import MotionIcon from '../icons/Motion';
@@ -99,13 +101,27 @@ function Camera({ name, config }) {
     [config, audioValue, sendAudio, detectValue, sendDetect, recordValue, sendRecordings, snapshotValue, sendSnapshots]
   );
 
+  const [isHovered, setIsHovered] = useState(false); // Add a state to track if the mouse is over the card
+
+  const handleMouseEnter = () => {
+    setIsHovered(true);
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+  };
+
+
   return (
     <Card
       buttons={buttons}
       href={href}
       header={cleanName}
       icons={icons}
-      media={<CameraImage camera={name} stretch />}
+      //media={<CameraImage camera={name} stretch />}
+      media={isHovered ? <JSMpegPlayer camera={name} stretch /> : <CameraImage camera={name} stretch />} // Use the state to decide which component to render
+      onMouseEnter={handleMouseEnter} // Handle mouse enter event
+      onMouseLeave={handleMouseLeave} // Handle mouse leave event
     />
   );
 }
