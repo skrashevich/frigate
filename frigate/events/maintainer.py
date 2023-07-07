@@ -185,7 +185,7 @@ class EventProcessor(threading.Thread):
                 Event.has_clip: event_data["has_clip"],
                 Event.has_snapshot: event_data["has_snapshot"],
                 Event.model_hash: first_detector.model.model_hash,
-                Event.model_type: first_detector.model.model_type,
+                Event.model_type: str(first_detector.model.model_type),
                 Event.detector_type: first_detector.type,
                 Event.data: {
                     "box": box,
