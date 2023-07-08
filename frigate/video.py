@@ -1029,7 +1029,7 @@ def process_frames(
         try:
             fps_tracker.update()
             fps.value = fps_tracker.eps()
-            detected_objects_queue.put(
+            detected_objects_queue.put_nowait(
                 (
                     camera_name,
                     frame_time,
@@ -1041,7 +1041,9 @@ def process_frames(
             detection_fps.value = object_detector.fps.eps()
             frame_manager.close(f"{camera_name}{frame_time}")
         except queue.Full:
+            q_size = detected_objects_queue.qsize()
+            data_size = detected_objects_queue.data_size()
             logger.warn(
-                f"Dropping frame due to full queue for {camera_name} at {frame_time}"
+                f"Dropping frame due to full queue for {camera_name} at {frame_time}. size: {q_size}, data_size: {data_size}"
             )
             frame_manager.delete(f"{camera_name}{frame_time}")

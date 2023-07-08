@@ -1025,7 +1025,7 @@ class TrackedObjectProcessor(threading.Thread):
                 o.to_dict() for o in camera_state.tracked_objects.values()
             ]
 
-            self.video_output_queue.put(
+            self.video_output_queue.put_nowait(
                 (
                     camera,
                     frame_time,
