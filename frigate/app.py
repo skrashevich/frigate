@@ -158,7 +158,9 @@ class FrigateApp:
                 "ffmpeg_pid": mp.Value("i", 0),  # type: ignore[typeddict-item]
                 # issue https://github.com/python/typeshed/issues/8799
                 # from mypy 0.981 onwards
-                "frame_queue": mp.Queue(maxsize=2),
+                "frame_queue": ff.Queue(
+                    max_size_bytes=DEFAULT_QUEUE_BUFFER_SIZE, max_size=2
+                ),
                 "capture_process": None,
                 "process": None,
             }
@@ -192,13 +194,15 @@ class FrigateApp:
         # Queues for clip processing
         self.event_queue: Queue = ff.Queue(DEFAULT_QUEUE_BUFFER_SIZE)
         self.event_processed_queue: Queue = ff.Queue(DEFAULT_QUEUE_BUFFER_SIZE)
-        self.video_output_queue: Queue = mp.Queue(
-            maxsize=len(self.config.cameras.keys()) * 2
+        self.video_output_queue: Queue = ff.Queue(
+            max_size_bytes=DEFAULT_QUEUE_BUFFER_SIZE,
+            max_size=len(self.config.cameras.keys()) * 2,
         )
 
         # Queue for cameras to push tracked objects to
-        self.detected_frames_queue: Queue = mp.Queue(
-            maxsize=len(self.config.cameras.keys()) * 2
+        self.detected_frames_queue: Queue = ff.Queue(
+            max_size_bytes=DEFAULT_QUEUE_BUFFER_SIZE,
+            max_size=len(self.config.cameras.keys()) * 2,
         )
 
         # Queue for recordings info
