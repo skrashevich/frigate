@@ -3,21 +3,16 @@
 import copy
 import datetime
 import logging
-import multiprocessing
 import re
 import shlex
-import time
 import urllib.parse
 from collections import Counter
 from collections.abc import Mapping
-from queue import Full
 from typing import Any, Tuple
 
 import numpy as np
 import pytz
 import yaml
-from faster_fifo import DEFAULT_CIRCULAR_BUFFER_SIZE, DEFAULT_TIMEOUT
-from faster_fifo import Queue as FFQueue
 from ruamel.yaml import YAML
 
 from frigate.const import REGEX_HTTP_CAMERA_USER_PASS, REGEX_RTSP_CAMERA_USER_PASS
@@ -62,55 +57,6 @@ class EventsPerSecond:
         threshold = now - self._last_n_seconds
         while self._timestamps and self._timestamps[0] < threshold:
             del self._timestamps[0]
-
-
-class LimitedQueue(FFQueue):
-    def __init__(
-        self,
-        maxsize=0,
-        max_size_bytes=DEFAULT_CIRCULAR_BUFFER_SIZE,
-        loads=None,
-        dumps=None,
-    ):
-        super().__init__(max_size_bytes=max_size_bytes, loads=loads, dumps=dumps)
-        self.maxsize = maxsize
-        self.lock = multiprocessing.Lock()  # Add a lock for thread-safety
-
-    def put(self, x, block=True, timeout=None):
-        # ensure only one writer.
-        with self.lock:
-            # block/full due to num elems
-            if self.maxsize > 0 and self.qsize() >= self.maxsize:
-                if block:
-                    if timeout is None:
-                        while self.qsize() >= self.maxsize:
-                            time.sleep(
-                                0.1
-                            )  # 0.1s, might want to replace this with a signal.
-                    else:
-                        start_time = time.time()
-                        while self.qsize() >= self.maxsize:
-                            remaining = timeout - (time.time() - start_time)
-                            if remaining <= 0.0:
-                                raise Full
-                            time.sleep(min(remaining, 0.1))
-                else:
-                    raise Full
-            # block/full due to underlying circular buffer being full
-            if block and timeout is None:
-                # workaround for https://github.com/alex-petrenko/faster-fifo/issues/42
-                while True:
-                    try:
-                        return super().put(x, block=block, timeout=DEFAULT_TIMEOUT)
-                    except Full:
-                        logger.warn("Queue was full, retrying in 1s")
-                        time.sleep(1)
-            return super().put(
-                x, block=block, timeout=DEFAULT_TIMEOUT if timeout is None else timeout
-            )
-
-    def full(self):
-        return self.qsize() == self.maxsize
 
 
 def deep_merge(dct1: dict, dct2: dict, override=False, merge_lists=False) -> dict:
