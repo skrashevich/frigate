@@ -32,5 +32,5 @@ class TimedSqliteQueueDatabase(SqliteQueueDatabase):
                 sql,
                 params,
                 duration,
-                call_stack,
+                "\n".join(call_stack),
             )
