@@ -1164,10 +1164,11 @@ def latest_frame(camera_name):
             or 10
         )
 
-        if frame is None or datetime.now().timestamp() > (
+        latest_frame = (
             current_app.detected_frames_processor.get_current_frame_time(camera_name)
             + retry_interval
-        ):
+        ) * 1.5
+        if frame is None or datetime.now().timestamp() > (latest_frame):
             if current_app.camera_error_image is None:
                 error_image = glob.glob("/opt/frigate/frigate/images/camera-error.jpg")
 
@@ -1177,6 +1178,9 @@ def latest_frame(camera_name):
                     )
 
             frame = current_app.camera_error_image
+            logger.warning(
+                f"Return error image for camera {camera_name}: latensy is {datetime.now().timestamp() - latest_frame}s"
+            )
 
         height = int(request.args.get("h", str(frame.shape[0])))
         width = int(height * frame.shape[1] / frame.shape[0])
