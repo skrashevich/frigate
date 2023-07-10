@@ -1054,4 +1054,4 @@ def process_frames(
             logger.warn(
                 f"Dropping frame due to full queue for {camera_name} at {frame_time}. size: {q_size}, data_size: {data_size}"
             )
-            frame_manager.delete(f"{camera_name}{frame_time}")
+            # frame_manager.delete(f"{camera_name}{frame_time}")
