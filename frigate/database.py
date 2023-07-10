@@ -12,5 +12,9 @@ class TimedSqliteQueueDatabase(SqliteQueueDatabase):
         start_time = time.time()
         cursor = super().execute_sql(sql, params, commit, timeout)
         duration = time.time() - start_time
-        logger.debug(f"Query {sql} with params {params} took {duration:.2f} seconds.")
+        logger.debug(
+            f"Query {sql} with params {params} took {duration:.2f} seconds."
+        ) if duration < 0.1 else logger.warn(
+            f"Query {sql} with params {params} took {duration:.2f} seconds."
+        )
         return cursor
