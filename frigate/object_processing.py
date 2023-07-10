@@ -1069,16 +1069,18 @@ class TrackedObjectProcessor(threading.Thread):
             tracked_objects = [
                 o.to_dict() for o in camera_state.tracked_objects.values()
             ]
-
-            self.video_output_queue.put_nowait(
-                (
-                    camera,
-                    frame_time,
-                    tracked_objects,
-                    motion_boxes,
-                    regions,
+            try:
+                self.video_output_queue.put_nowait(
+                    (
+                        camera,
+                        frame_time,
+                        tracked_objects,
+                        motion_boxes,
+                        regions,
+                    )
                 )
-            )
+            except queue.Full:
+                continue
 
             # send info on this frame to the recordings maintainer
             self.recordings_info_queue.put(
