@@ -1,5 +1,6 @@
 import logging
 import time
+import traceback
 
 from peewee import SENTINEL
 from playhouse.sqliteq import SqliteQueueDatabase
@@ -12,9 +13,24 @@ class TimedSqliteQueueDatabase(SqliteQueueDatabase):
         start_time = time.time()
         cursor = super().execute_sql(sql, params, commit, timeout)
         duration = time.time() - start_time
-        logger.debug(
-            f"Query {sql} with params {params} took {duration:.2f} seconds."
-        ) if duration < 0.1 else logger.warn(
-            f"Query {sql} with params {params} took {duration:.2f} seconds."
-        )
+        self.log_query(sql, params, duration)
         return cursor
+
+    @staticmethod
+    def log_query(sql, params, duration):
+        if duration < 0.1:
+            logger.debug(
+                "Query %s with params %s took %.2f seconds.",
+                sql,
+                params,
+                duration,
+            )
+        else:
+            call_stack = traceback.format_stack()
+            logger.warning(
+                "Query %s with params %s took %.2f seconds.\nCall stack: %s",
+                sql,
+                params,
+                duration,
+                call_stack,
+            )
