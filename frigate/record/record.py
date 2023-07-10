@@ -8,10 +8,10 @@ from types import FrameType
 from typing import Optional
 
 import faster_fifo as ff
-from playhouse.sqliteq import SqliteQueueDatabase
 from setproctitle import setproctitle
 
 from frigate.config import FrigateConfig
+from frigate.database import TimedSqliteQueueDatabase
 from frigate.models import Event, Recordings, RecordingsToDelete, Timeline
 from frigate.record.cleanup import RecordingCleanup
 from frigate.record.maintainer import RecordingMaintainer
@@ -38,7 +38,7 @@ def manage_recordings(
     setproctitle("frigate.recording_manager")
     listen()
 
-    db = SqliteQueueDatabase(
+    db = TimedSqliteQueueDatabase(
         config.database.path,
         pragmas={
             "auto_vacuum": "FULL",  # Does not defragment database

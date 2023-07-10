@@ -15,7 +15,6 @@ import psutil
 from faster_fifo import Queue
 from peewee_migrate import Router
 from playhouse.sqlite_ext import SqliteExtDatabase
-from playhouse.sqliteq import SqliteQueueDatabase
 
 from frigate.comms.dispatcher import Communicator, Dispatcher
 from frigate.comms.mqtt import MqttClient
@@ -31,6 +30,7 @@ from frigate.const import (
     MODEL_CACHE_DIR,
     RECORD_DIR,
 )
+from frigate.database import TimedSqliteQueueDatabase
 from frigate.events.audio import listen_to_audio
 from frigate.events.cleanup import EventCleanup
 from frigate.events.external import ExternalEventProcessor
@@ -293,7 +293,7 @@ class FrigateApp:
     def bind_database(self) -> None:
         """Bind db to the main process."""
         # NOTE: all db accessing processes need to be created before the db can be bound to the main process
-        self.db = SqliteQueueDatabase(
+        self.db = TimedSqliteQueueDatabase(
             self.config.database.path,
             pragmas={
                 "auto_vacuum": "FULL",  # Does not defragment database

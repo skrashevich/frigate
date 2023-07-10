@@ -26,11 +26,11 @@ from flask import (
 )
 from peewee import DoesNotExist, fn, operator
 from playhouse.shortcuts import model_to_dict
-from playhouse.sqliteq import SqliteQueueDatabase
 from tzlocal import get_localzone_name
 
 from frigate.config import FrigateConfig
 from frigate.const import CLIPS_DIR, CONFIG_DIR, MAX_SEGMENT_DURATION, RECORD_DIR
+from frigate.database import TimedSqliteQueueDatabase
 from frigate.events.external import ExternalEventProcessor
 from frigate.models import Event, Recordings, Timeline
 from frigate.object_processing import TrackedObject
@@ -54,7 +54,7 @@ bp = Blueprint("frigate", __name__)
 
 def create_app(
     frigate_config,
-    database: SqliteQueueDatabase,
+    database: TimedSqliteQueueDatabase,
     stats_tracking,
     detected_frames_processor,
     storage_maintainer: StorageMaintainer,
