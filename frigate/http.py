@@ -15,6 +15,7 @@ from urllib.parse import unquote
 import cv2
 import numpy as np
 import pytz
+import yappi
 from flask import (
     Blueprint,
     Flask,
@@ -88,6 +89,17 @@ def create_app(
     app.register_blueprint(bp)
 
     return app
+
+
+@bp.before_request
+def before_request():
+    yappi.start()  # Start profiling
+
+
+@bp.after_request
+def after_request(response):
+    yappi.stop()  # Stop profiling
+    return response
 
 
 @bp.route("/")
@@ -1115,6 +1127,16 @@ def stats():
     return jsonify(stats)
 
 
+@bp.route("/yappi")
+def get_stats():
+    stats = yappi.get_func_stats()  # Get profiling stats
+    # Convert stats to a serializable format
+    serializable_stats = [
+        dict(name=s.name, ncalls=s.ncall, tsub=s.tsub, ttotal=s.ttotal) for s in stats
+    ]
+    return jsonify(serializable_stats)
+
+
 @bp.route("/<camera_name>")
 def mjpeg_feed(camera_name):
     fps = int(request.args.get("fps", "3"))
@@ -1172,7 +1194,9 @@ def latest_frame(camera_name):
             or 10
         )
 
-        latest_frame = frame_time + retry_interval * 1.5 #magic number, because of shit happens
+        latest_frame = (
+            frame_time + retry_interval * 1.5
+        )  # magic number, because of shit happens
         now = datetime.now().timestamp()
         if frame is None or now > latest_frame:
             if (
