@@ -9,6 +9,7 @@ import string
 from typing import Optional
 
 import cv2
+from cv2 import Mat
 from faster_fifo import Queue
 
 from frigate.config import CameraConfig, FrigateConfig
@@ -85,10 +86,10 @@ class ExternalEventProcessor:
         label: str,
         event_id: str,
         draw: dict[str, any],
-        img_frame: any,
+        img_frame: Mat,
     ) -> str:
         # write clean snapshot if enabled
-        if camera_config.snapshots.clean_copy:
+        if camera_config.snapshots.clean_copy and isinstance(img_frame, Mat):
             ret, png = cv2.imencode(".png", img_frame)
 
             if ret:
