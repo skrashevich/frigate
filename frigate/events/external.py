@@ -47,8 +47,12 @@ class ExternalEventProcessor:
         thumbnail = self._write_images(
             camera_config, label, event_id, draw, snapshot_frame
         )
-
-        self.queue.put(
+        q_size = self.queue.qsize()
+        data_size = self.queue.data_size()
+        logger.warn(
+            f"Audio events: put to query for {camera} at {now}. Queue size: {q_size}, data_size: {data_size}"
+        )
+        self.queue.put_nowait(
             (
                 EventTypeEnum.api,
                 "new",
@@ -76,7 +80,7 @@ class ExternalEventProcessor:
 
     def finish_manual_event(self, event_id: str, end_time: float) -> None:
         """Finish external event with indeterminate duration."""
-        self.queue.put(
+        self.queue.put_nowait(
             (EventTypeEnum.api, "end", None, {"id": event_id, "end_time": end_time})
         )
 
@@ -122,15 +126,20 @@ class ExternalEventProcessor:
                     color=box.get("color", (255, 0, 0)),
                 )
 
-        ret, jpg = cv2.imencode(".jpg", img_frame)
-        with open(
-            os.path.join(CLIPS_DIR, f"{camera_config.name}-{event_id}.jpg"),
-            "wb",
-        ) as j:
-            j.write(jpg.tobytes())
+        if isinstance(img_frame, Mat):
+            ret, jpg = cv2.imencode(".jpg", img_frame)
+            with open(
+                os.path.join(CLIPS_DIR, f"{camera_config.name}-{event_id}.jpg"),
+                "wb",
+            ) as j:
+                j.write(jpg.tobytes())
 
-        # create thumbnail with max height of 175 and save
-        width = int(175 * img_frame.shape[1] / img_frame.shape[0])
-        thumb = cv2.resize(img_frame, dsize=(width, 175), interpolation=cv2.INTER_AREA)
-        ret, jpg = cv2.imencode(".jpg", thumb)
-        return base64.b64encode(jpg.tobytes()).decode("utf-8")
+            # create thumbnail with max height of 175 and save
+            width = int(175 * img_frame.shape[1] / img_frame.shape[0])
+            thumb = cv2.resize(
+                img_frame, dsize=(width, 175), interpolation=cv2.INTER_AREA
+            )
+            ret, jpg = cv2.imencode(".jpg", thumb)
+            return base64.b64encode(jpg.tobytes()).decode("utf-8")
+        else:
+            return ""
