@@ -6,17 +6,17 @@ import shutil
 import signal
 import sys
 import traceback
+from multiprocessing import Queue
 from multiprocessing.synchronize import Event as MpEvent
 from types import FrameType
 from typing import Optional
 
-import faster_fifo as ff
 import psutil
-from faster_fifo import Queue
 from peewee_migrate import Router
 from playhouse.sqlite_ext import SqliteExtDatabase
 
 from frigate.comms.dispatcher import Communicator, Dispatcher
+from frigate.comms.inter_process import InterProcessCommunicator
 from frigate.comms.mqtt import MqttClient
 from frigate.comms.ws import WebSocketClient
 from frigate.config import FrigateConfig
@@ -25,7 +25,6 @@ from frigate.const import (
     CLIPS_DIR,
     CONFIG_DIR,
     DEFAULT_DB_PATH,
-    DEFAULT_QUEUE_BUFFER_SIZE,
     EXPORT_DIR,
     MODEL_CACHE_DIR,
     RECORD_DIR,
@@ -59,11 +58,11 @@ logger = logging.getLogger(__name__)
 class FrigateApp:
     def __init__(self) -> None:
         self.stop_event: MpEvent = mp.Event()
-        self.detection_queue: Queue = ff.Queue()
+        self.detection_queue: Queue = mp.Queue()
         self.detectors: dict[str, ObjectDetectProcess] = {}
         self.detection_out_events: dict[str, MpEvent] = {}
         self.detection_shms: list[mp.shared_memory.SharedMemory] = []
-        self.log_queue: Queue = ff.Queue()
+        self.log_queue: Queue = mp.Queue()
         self.plus_api = PlusApi()
         self.camera_metrics: dict[str, CameraMetricsTypes] = {}
         self.feature_metrics: dict[str, FeatureMetricsTypes] = {}
@@ -109,7 +108,7 @@ class FrigateApp:
         user_config = FrigateConfig.parse_file(config_file)
         self.config = user_config.runtime_config(self.plus_api)
 
-        for camera_name, camera_config in self.config.cameras.items():
+        for camera_name in self.config.cameras.keys():
             # create camera_metrics
             self.camera_metrics[camera_name] = {
                 "camera_fps": mp.Value("d", 0.0),  # type: ignore[typeddict-item]
@@ -218,24 +217,32 @@ class FrigateApp:
 
     def init_queues(self) -> None:
         # Queues for clip processing
-        self.event_queue: Queue = ff.Queue(DEFAULT_QUEUE_BUFFER_SIZE)
-        self.event_processed_queue: Queue = ff.Queue(DEFAULT_QUEUE_BUFFER_SIZE)
-        self.video_output_queue: Queue = ff.Queue(
-            max_size_bytes=DEFAULT_QUEUE_BUFFER_SIZE,
-            max_size=len(self.config.cameras.keys()) * 2,
+        self.event_queue: Queue = mp.Queue()
+        self.event_processed_queue: Queue = mp.Queue()
+        self.video_output_queue: Queue = mp.Queue(
+            maxsize=sum(camera.enabled for camera in self.config.cameras.values()) * 2
         )
 
         # Queue for cameras to push tracked objects to
-        self.detected_frames_queue: Queue = ff.Queue(
-            max_size_bytes=DEFAULT_QUEUE_BUFFER_SIZE,
-            max_size=len(self.config.cameras.keys()) * 2,
+        self.detected_frames_queue: Queue = mp.Queue(
+            maxsize=sum(camera.enabled for camera in self.config.cameras.values()) * 2
         )
 
-        # Queue for recordings info
-        self.recordings_info_queue: Queue = ff.Queue(DEFAULT_QUEUE_BUFFER_SIZE)
+        # Queue for object recordings info
+        self.object_recordings_info_queue: Queue = mp.Queue()
+
+        # Queue for audio recordings info if enabled
+        self.audio_recordings_info_queue: Optional[Queue] = (
+            mp.Queue()
+            if len([c for c in self.config.cameras.values() if c.audio.enabled]) > 0
+            else None
+        )
 
         # Queue for timeline events
-        self.timeline_queue: Queue = ff.Queue(DEFAULT_QUEUE_BUFFER_SIZE)
+        self.timeline_queue: Queue = mp.Queue()
+
+        # Queue for inter process communication
+        self.inter_process_queue: Queue = mp.Queue()
 
     def init_database(self) -> None:
         def vacuum_db(db: SqliteExtDatabase) -> None:
@@ -292,7 +299,12 @@ class FrigateApp:
         recording_process = mp.Process(
             target=manage_recordings,
             name="recording_manager",
-            args=(self.config, self.recordings_info_queue, self.feature_metrics),
+            args=(
+                self.config,
+                self.object_recordings_info_queue,
+                self.audio_recordings_info_queue,
+                self.feature_metrics,
+            ),
         )
         recording_process.daemon = True
         self.recording_process = recording_process
@@ -325,6 +337,11 @@ class FrigateApp:
             self.config, self.event_queue
         )
 
+    def init_inter_process_communicator(self) -> None:
+        self.inter_process_communicator = InterProcessCommunicator(
+            self.inter_process_queue
+        )
+
     def init_web_server(self) -> None:
         self.flask_app = create_app(
             self.config,
@@ -347,6 +364,8 @@ class FrigateApp:
             comms.append(MqttClient(self.config))
 
         comms.append(WebSocketClient(self.config))
+        comms.append(self.inter_process_communicator)
+
         self.dispatcher = Dispatcher(
             self.config,
             self.onvif_controller,
@@ -410,7 +429,7 @@ class FrigateApp:
             self.event_queue,
             self.event_processed_queue,
             self.video_output_queue,
-            self.recordings_info_queue,
+            self.object_recordings_info_queue,
             self.ptz_autotracker_thread,
             self.stop_event,
         )
@@ -477,7 +496,12 @@ class FrigateApp:
             audio_process = mp.Process(
                 target=listen_to_audio,
                 name="audio_capture",
-                args=(self.config, self.feature_metrics),
+                args=(
+                    self.config,
+                    self.audio_recordings_info_queue,
+                    self.feature_metrics,
+                    self.inter_process_communicator,
+                ),
             )
             audio_process.daemon = True
             audio_process.start()
@@ -570,6 +594,7 @@ class FrigateApp:
             self.init_recording_manager()
             self.init_go2rtc()
             self.bind_database()
+            self.init_inter_process_communicator()
             self.init_dispatcher()
         except Exception as e:
             print(e)
@@ -639,10 +664,13 @@ class FrigateApp:
             self.event_processed_queue,
             self.video_output_queue,
             self.detected_frames_queue,
-            self.recordings_info_queue,
+            self.object_recordings_info_queue,
+            self.audio_recordings_info_queue,
             self.log_queue,
+            self.inter_process_queue,
         ]:
-            while not queue.empty():
-                queue.get_nowait()
-            queue.close()
-            queue.join_thread()
+            if queue is not None:
+                while not queue.empty():
+                    queue.get_nowait()
+                queue.close()
+                queue.join_thread()

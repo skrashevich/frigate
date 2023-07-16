@@ -637,13 +637,13 @@ export default function Events({ path, ...props }) {
                           {event.zones.join(', ').replaceAll('_', ' ')}
                         </div> : null}
                         <div className="capitalize  text-sm flex align-center">
-                      <Score className="w-5 h-5 mr-2 inline" onClick={(e) => onLabelsClick(e, event.id)} />
+                          <Score className="w-5 h-5 mr-2 inline" onClick={(e) => onLabelsClick(e, event.id)} />
                           {(event?.data?.top_score || event.top_score || 0) == 0
                             ? null
-                            : (displayLabels ? event.label : `Label`) + `: ${((event?.data?.top_score || event.top_score) * 100).toFixed(0)}%`}
+                            : `${event.label}: ${((event?.data?.top_score || event.top_score) * 100).toFixed(0)}%`}
                           {(event?.data?.sub_label_score || 0) == 0
                             ? null
-                            : `, ` + (displayLabels ? event.sub_label : `Sub-label`) + `: ${(event?.data?.sub_label_score * 100).toFixed(0)}%`}
+                            : `, ${event.sub_label}: ${(event?.data?.sub_label_score * 100).toFixed(0)}%`}
                         </div>
                       </div>
                       <div class="hidden sm:flex flex-col justify-end mr-2">

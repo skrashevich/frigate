@@ -6,11 +6,10 @@ import logging
 import os
 import random
 import string
+from multiprocessing import Queue
 from typing import Optional
 
 import cv2
-from cv2 import Mat
-from faster_fifo import Queue
 
 from frigate.config import CameraConfig, FrigateConfig
 from frigate.const import CLIPS_DIR

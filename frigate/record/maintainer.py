@@ -3,6 +3,7 @@
 import asyncio
 import datetime
 import logging
+import multiprocessing as mp
 import os
 import queue
 import random
@@ -15,9 +16,9 @@ from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing.synchronize import Event as MpEvent
 from pathlib import Path
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 
-import faster_fifo as ff
+import numpy as np
 import psutil
 
 from frigate.config import FrigateConfig, RetainModeEnum
@@ -30,21 +31,43 @@ from frigate.util.services import get_video_properties
 logger = logging.getLogger(__name__)
 
 
+class SegmentInfo:
+    def __init__(
+        self, motion_box_count: int, active_object_count: int, average_dBFS: int
+    ) -> None:
+        self.motion_box_count = motion_box_count
+        self.active_object_count = active_object_count
+        self.average_dBFS = average_dBFS
+
+    def should_discard_segment(self, retain_mode: RetainModeEnum) -> bool:
+        return (
+            retain_mode == RetainModeEnum.motion
+            and self.motion_box_count == 0
+            and self.average_dBFS == 0
+        ) or (
+            retain_mode == RetainModeEnum.active_objects
+            and self.active_object_count == 0
+        )
+
+
 class RecordingMaintainer(threading.Thread):
     def __init__(
         self,
         config: FrigateConfig,
-        recordings_info_queue: ff.Queue,
+        object_recordings_info_queue: mp.Queue,
+        audio_recordings_info_queue: Optional[mp.Queue],
         process_info: dict[str, FeatureMetricsTypes],
         stop_event: MpEvent,
     ):
         threading.Thread.__init__(self)
         self.name = "recording_maintainer"
         self.config = config
-        self.recordings_info_queue = recordings_info_queue
+        self.object_recordings_info_queue = object_recordings_info_queue
+        self.audio_recordings_info_queue = audio_recordings_info_queue
         self.process_info = process_info
         self.stop_event = stop_event
-        self.recordings_info: dict[str, Any] = defaultdict(deque)
+        self.object_recordings_info: dict[str, list] = defaultdict(list)
+        self.audio_recordings_info: dict[str, list] = defaultdict(list)
         self.end_time_cache: dict[str, Tuple[datetime.datetime, float]] = {}
         self.lock = threading.Lock()
         self.executor = ThreadPoolExecutor(max_workers=5)
@@ -108,13 +131,21 @@ class RecordingMaintainer(threading.Thread):
                 grouped_recordings[camera] = grouped_recordings[camera][-keep_count:]
 
         for camera, recordings in grouped_recordings.items():
-            with self.lock:
-                while (
-                    len(self.recordings_info[camera]) > 0
-                    and self.recordings_info[camera][0][0]
-                    < recordings[0]["start_time"].timestamp()
-                ):
-                    self.recordings_info[camera].popleft()
+            # clear out all the object recording info for old frames
+            while (
+                len(self.object_recordings_info[camera]) > 0
+                and self.object_recordings_info[camera][0][0]
+                < recordings[0]["start_time"].timestamp()
+            ):
+                self.object_recordings_info[camera].pop(0)
+
+            # clear out all the audio recording info for old frames
+            while (
+                len(self.audio_recordings_info[camera]) > 0
+                and self.audio_recordings_info[camera][0][0]
+                < recordings[0]["start_time"].timestamp()
+            ):
+                self.audio_recordings_info[camera].pop(0)
 
             # get all events with the end time after the start of the oldest cache file
             # or with end_time None
@@ -211,7 +242,9 @@ class RecordingMaintainer(threading.Thread):
             # if it ends more than the configured pre_capture for the camera
             else:
                 pre_capture = self.config.cameras[camera].record.events.pre_capture
-                most_recently_processed_frame_time = self.recordings_info[camera][-1][0]
+                most_recently_processed_frame_time = self.object_recordings_info[
+                    camera
+                ][-1][0]
                 retain_cutoff = most_recently_processed_frame_time - pre_capture
                 if end_time.timestamp() < retain_cutoff:
                     Path(cache_path).unlink(missing_ok=True)
@@ -225,9 +258,16 @@ class RecordingMaintainer(threading.Thread):
 
     def segment_stats(
         self, camera: str, start_time: datetime.datetime, end_time: datetime.datetime
-    ) -> Tuple[int, int]:
+    ) -> SegmentInfo:
         active_count = 0
         motion_count = 0
+        for frame in self.object_recordings_info[camera]:
+            # frame is after end time of segment
+            if frame[0] > end_time.timestamp():
+                break
+            # frame is before start time of segment
+            if frame[0] < start_time.timestamp():
+                continue
 
         timestamps = [frame[0] for frame in self.recordings_info[camera]]
         start_index = bisect_left(timestamps, start_time.timestamp())
@@ -242,7 +282,21 @@ class RecordingMaintainer(threading.Thread):
 
             motion_count += sum(area(box) for box in frame[2])
 
-        return (motion_count, active_count)
+        audio_values = []
+        for frame in self.audio_recordings_info[camera]:
+            # frame is after end time of segment
+            if frame[0] > end_time.timestamp():
+                break
+
+            # frame is before start time of segment
+            if frame[0] < start_time.timestamp():
+                continue
+
+            audio_values.append(frame[1])
+
+        average_dBFS = 0 if not audio_values else np.average(audio_values)
+
+        return SegmentInfo(motion_count, active_count, round(average_dBFS))
 
     def store_segment(
         self,
@@ -253,12 +307,10 @@ class RecordingMaintainer(threading.Thread):
         cache_path: str,
         store_mode: RetainModeEnum,
     ) -> None:
-        motion_count, active_count = self.segment_stats(camera, start_time, end_time)
+        segment_info = self.segment_stats(camera, start_time, end_time)
 
         # check if the segment shouldn't be stored
-        if (store_mode == RetainModeEnum.motion and motion_count == 0) or (
-            store_mode == RetainModeEnum.active_objects and active_count == 0
-        ):
+        if segment_info.should_discard_segment(store_mode):
             Path(cache_path).unlink(missing_ok=True)
             self.end_time_cache.pop(cache_path, None)
             return
@@ -331,9 +383,10 @@ class RecordingMaintainer(threading.Thread):
                     start_time=start_time.timestamp(),
                     end_time=end_time.timestamp(),
                     duration=duration,
-                    motion=motion_count,
+                    motion=segment_info.motion_box_count,
                     # TODO: update this to store list of active objects at some point
-                    objects=active_count,
+                    objects=segment_info.active_object_count,
+                    dBFS=segment_info.average_dBFS,
                     segment_size=segment_size,
                 )
         except Exception as e:
@@ -350,7 +403,7 @@ class RecordingMaintainer(threading.Thread):
         while not self.stop_event.wait(wait_time):
             run_start = time.perf_counter()
 
-            # empty the recordings info queue
+            # empty the object recordings info queue
             while True:
                 try:
                     (
@@ -359,10 +412,10 @@ class RecordingMaintainer(threading.Thread):
                         current_tracked_objects,
                         motion_boxes,
                         regions,
-                    ) = self.recordings_info_queue.get(False)
+                    ) = self.object_recordings_info_queue.get(False)
 
                     if self.process_info[camera]["record_enabled"].value:
-                        self.recordings_info[camera].append(
+                        self.object_recordings_info[camera].append(
                             (
                                 frame_time,
                                 current_tracked_objects,
@@ -372,6 +425,26 @@ class RecordingMaintainer(threading.Thread):
                         )
                 except queue.Empty:
                     break
+
+            # empty the audio recordings info queue if audio is enabled
+            if self.audio_recordings_info_queue:
+                while True:
+                    try:
+                        (
+                            camera,
+                            frame_time,
+                            dBFS,
+                        ) = self.audio_recordings_info_queue.get(False)
+
+                        if self.process_info[camera]["record_enabled"].value:
+                            self.audio_recordings_info[camera].append(
+                                (
+                                    frame_time,
+                                    dBFS,
+                                )
+                            )
+                    except queue.Empty:
+                        break
 
             try:
                 threading.Thread(target=asyncio.run, args=(self.move_files(),)).start()
