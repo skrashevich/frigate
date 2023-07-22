@@ -1184,6 +1184,8 @@ def latest_frame(camera_name):
         "motion_boxes": request.args.get("motion", type=int),
         "regions": request.args.get("regions", type=int),
     }
+    #TODO: debug print draw_options
+    logger.debug(f"Drawing options for {camera_name}: {draw_options}")
     resize_quality = request.args.get("quality", default=70, type=int)
 
     if camera_name in current_app.frigate_config.cameras:
