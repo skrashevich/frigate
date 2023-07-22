@@ -912,6 +912,7 @@ def create_event(camera_name, label):
             label,
             json.get("source_type", "api"),
             json.get("sub_label", None),
+            json.get("score", 0),
             json.get("duration", 30),
             json.get("include_recording", True),
             json.get("draw", {}),
@@ -1102,7 +1103,7 @@ def config_set():
         logging.error(f"Error updating config: {e}")
         return "Error updating config", 500
 
-    return "Config successfully updated", 200
+    return "Config successfully updated, restart to apply", 200
 
 
 @bp.route("/config/schema.json")
