@@ -15,11 +15,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [frigate]
+        target: [main]
         platform: ["linux/amd64,linux/arm64"]
-        include:
-          - target: frigate-tensorrt
-            platform: linux/amd64
     steps:
     - name: Free disk space
       if: matrix.target == 'frigate-tensorrt'
@@ -29,7 +26,6 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
     - name: Configure QEMU
-      if: matrix.target == 'frigate'
       run: |
         sudo apt-get update -q -y
         sudo apt-get -qq install -y qemu qemu-user-static
@@ -56,11 +52,12 @@ jobs:
         context: .
         push: true
         platforms: ${{ matrix.platform }}
+        file: docker/${{ matrix.target }}/Dockerfile
         tags: |
-          ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ github.ref_name }}-${{ env.SHORT_SHA }}
-          ${{ secrets.DOCKER_USERNAME }}/${{ matrix.target }}:${{ github.ref_name }}
-          ghcr.io/${{ github.actor }}/${{ matrix.target }}:${{ github.ref_name }}-${{ env.SHORT_SHA }}
-          ghcr.io/${{ github.actor }}/${{ matrix.target }}:${{ github.ref_name }}
-        target: ${{ matrix.target }}
+          ${{ github.repository }}:${{ github.ref_name }}-${{ env.SHORT_SHA }}
+          ${{ github.repository }}:${{ github.ref_name }}
+          ghcr.io/${{ github.repository }}:${{ github.ref_name }}-${{ env.SHORT_SHA }}
+          ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+        target: frigate
         cache-from: type=gha,scope=${{ matrix.target }}
-        cache-to: type=gha,scope=${{ matrix.target }}
+        cache-to: type=gha,scope=${{ matrix.target }},mode=max,ignore-error=true
