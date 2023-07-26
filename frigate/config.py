@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -804,9 +805,19 @@ class CameraConfig(FrigateBaseModel):
             ffmpeg_input.global_args or self.ffmpeg.global_args
         )
         hwaccel_args = get_ffmpeg_arg_list(
-            parse_preset_hardware_acceleration_decode(ffmpeg_input.hwaccel_args)
+            parse_preset_hardware_acceleration_decode(
+                ffmpeg_input.hwaccel_args,
+                self.detect.fps,
+                self.detect.width,
+                self.detect.height,
+            )
             or ffmpeg_input.hwaccel_args
-            or parse_preset_hardware_acceleration_decode(self.ffmpeg.hwaccel_args)
+            or parse_preset_hardware_acceleration_decode(
+                self.ffmpeg.hwaccel_args,
+                self.detect.fps,
+                self.detect.width,
+                self.detect.height,
+            )
             or self.ffmpeg.hwaccel_args
         )
         input_args = get_ffmpeg_arg_list(
@@ -1049,7 +1060,7 @@ class FrigateConfig(FrigateBaseModel):
                     if "detect" in input.roles:
                         stream_info = {"width": 0, "height": 0}
                         try:
-                            stream_info = get_video_properties(input.path)
+                            stream_info = asyncio.run(get_video_properties(input.path))
                         except Exception:
                             logger.warn(
                                 f"Error detecting stream resolution automatically for {input.path} Applying default values."

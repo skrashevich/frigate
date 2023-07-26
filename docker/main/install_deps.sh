@@ -10,10 +10,14 @@ apt-get -qq install --no-install-recommends -y \
     wget \
     procps vainfo \
     unzip locales tzdata libxml2 xz-utils \
+    python3.9 \
     python3-pip \
     curl \
     jq \
     nethogs
+
+# ensure python3 defaults to python3.9
+update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1
 
 mkdir -p -m 600 /root/.gnupg
 
@@ -23,8 +27,10 @@ curl -fsSLo - https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
 echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | tee /etc/apt/sources.list.d/coral-edgetpu.list
 echo "libedgetpu1-max libedgetpu/accepted-eula select true" | debconf-set-selections
 
-# enable non-free repo
-sed -i -e's/ main/ main contrib non-free/g' /etc/apt/sources.list
+# enable non-free repo in Debian
+if grep -q "Debian" /etc/issue; then
+    sed -i -e's/ main/ main contrib non-free/g' /etc/apt/sources.list
+fi
 
 # coral drivers
 apt-get -qq update
@@ -41,11 +47,10 @@ fi
 
 # ffmpeg -> arm64
 if [[ "${TARGETARCH}" == "arm64" ]]; then
-    # add raspberry pi repo
-    gpg --no-default-keyring --keyring /usr/share/keyrings/raspbian.gpg --keyserver keyserver.ubuntu.com --recv-keys 82B129927FA3303E
-    echo "deb [signed-by=/usr/share/keyrings/raspbian.gpg] https://archive.raspberrypi.org/debian/ bullseye main" | tee /etc/apt/sources.list.d/raspi.list
-    apt-get -qq update
-    apt-get -qq install --no-install-recommends --no-install-suggests -y ffmpeg
+    mkdir -p /usr/lib/btbn-ffmpeg
+    wget -qO btbn-ffmpeg.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2022-07-31-12-37/ffmpeg-n5.1-2-g915ef932a3-linuxarm64-gpl-5.1.tar.xz"
+    tar -xf btbn-ffmpeg.tar.xz -C /usr/lib/btbn-ffmpeg --strip-components 1
+    rm -rf btbn-ffmpeg.tar.xz /usr/lib/btbn-ffmpeg/doc /usr/lib/btbn-ffmpeg/bin/ffplay
 fi
 
 # arch specific packages
