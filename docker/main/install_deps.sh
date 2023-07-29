@@ -87,9 +87,3 @@ rm -rf /var/lib/apt/lists/*
 # Remove LLVM-14
 cd $(dirname `ldconfig -p | grep libLLVM-15.so.1 | cut -d' ' -f4`) && \
 rm -f libLLVM-14.so.1  && ln -s libLLVM-15.so libLLVM-14.so.1
-
-# Install yq, for frigate-prepare and go2rtc echo source
-curl -fsSL \
-    "https://github.com/mikefarah/yq/releases/download/v4.34.2/yq_linux_$(dpkg --print-architecture)" \
-    --output /usr/local/bin/yq
-chmod +x /usr/local/bin/yq
