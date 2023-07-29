@@ -34,6 +34,12 @@ fi
 
 # coral drivers
 apt-get -qq update
+# Install libedgetpu1-std
+apt-get install -y --no-install-recommends --no-install-suggests libedgetpu1-std
+
+# Copy the installed 'std' libraries to another directory
+find /usr/lib -name 'libedgetpu*' -exec cp -fp {} {}-std \;
+
 apt-get -qq install --no-install-recommends --no-install-suggests -y \
     libedgetpu1-max python3-tflite-runtime python3-pycoral
 

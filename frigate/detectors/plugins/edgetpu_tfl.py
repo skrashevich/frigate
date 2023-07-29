@@ -21,6 +21,9 @@ DETECTOR_KEY = "edgetpu"
 class EdgeTpuDetectorConfig(BaseDetectorConfig):
     type: Literal[DETECTOR_KEY]
     device: str = Field(default=None, title="Device Type")
+    working_mode: Literal["std", "max"] = Field(
+        default="max", title="Coral Running Mode"
+    )
 
 
 class EdgeTpuTfl(DetectionApi):
@@ -38,7 +41,12 @@ class EdgeTpuTfl(DetectionApi):
                 device_config["device"] if "device" in device_config else "auto"
             )
             logger.info(f"Attempting to load TPU as {device_type}")
-            edge_tpu_delegate = load_delegate("libedgetpu.so.1.0", device_config)
+            if detector_config.working_mode == "max":
+                edge_tpu_delegate = load_delegate("libedgetpu.so.1.0", device_config)
+            else:
+                edge_tpu_delegate = load_delegate(
+                    "libedgetpu.so.1.0-std", device_config
+                )
             logger.info("TPU found")
             self.interpreter = Interpreter(
                 model_path=detector_config.model.path,
