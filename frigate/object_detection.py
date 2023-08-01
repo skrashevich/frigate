@@ -211,7 +211,7 @@ class RemoteObjectDetector:
         # copy input to shared memory
         self.np_shm[:] = tensor_input[:]
         self.event.clear()
-        self.detection_queue.put_nowait(self.name)
+        self.detection_queue.put(self.name)
         result = self.event.wait(timeout=5.0)
 
         # if it timed out

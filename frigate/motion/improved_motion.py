@@ -79,10 +79,14 @@ class ImprovedMotionDetector(MotionDetector):
 
                 avg_min, avg_max = np.mean(self.contrast_values, axis=0)
 
-                resized_frame = np.clip(resized_frame, avg_min, avg_max)
-                resized_frame = (
-                    ((resized_frame - avg_min) / (avg_max - avg_min)) * 255
-                ).astype(np.uint8)
+                np.clip(resized_frame, avg_min, avg_max, out=resized_frame)
+                np.multiply(
+                    ((resized_frame - avg_min) / (avg_max - avg_min)),
+                    255,
+                    out=resized_frame,
+                    casting="unsafe",
+                )
+                resized_frame = resized_frame.astype(np.uint8)
 
         if self.save_images:
             contrasted_saved = resized_frame.copy()

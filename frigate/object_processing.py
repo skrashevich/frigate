@@ -1070,7 +1070,7 @@ class TrackedObjectProcessor(threading.Thread):
                 o.to_dict() for o in camera_state.tracked_objects.values()
             ]
             try:
-                self.video_output_queue.put_nowait(
+                self.video_output_queue.put(
                     (
                         camera,
                         frame_time,
@@ -1080,7 +1080,7 @@ class TrackedObjectProcessor(threading.Thread):
                     )
                 )
             except queue.Full:
-                continue
+                pass
 
             # send info on this frame to the recordings maintainer
             self.recordings_info_queue.put(

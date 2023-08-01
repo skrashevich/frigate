@@ -49,11 +49,11 @@ class ExternalEventProcessor:
             camera_config, label, event_id, draw, snapshot_frame
         )
         q_size = self.queue.qsize()
-        data_size = self.queue.data_size()
+        # data_size = self.queue.data_size()
         logger.warn(
-            f"Audio events: put to query for {camera} at {now}. Queue size: {q_size}, data_size: {data_size}"
+            f"Audio events: put to query for {camera} at {now}. Queue size: {q_size}"
         )
-        self.queue.put_nowait(
+        self.queue.put(
             (
                 EventTypeEnum.api,
                 "new",
@@ -82,7 +82,7 @@ class ExternalEventProcessor:
 
     def finish_manual_event(self, event_id: str, end_time: float) -> None:
         """Finish external event with indeterminate duration."""
-        self.queue.put_nowait(
+        self.queue.put(
             (EventTypeEnum.api, "end", None, {"id": event_id, "end_time": end_time})
         )
 

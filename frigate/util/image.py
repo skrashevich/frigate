@@ -234,6 +234,59 @@ def get_yuv_crop(frame_shape, crop):
 
 def yuv_crop_and_resize(frame, region, height=None):
     # Crops and resizes a YUV frame while maintaining aspect ratio
+    height = frame.shape[0] // 3 * 2
+    width = frame.shape[1]
+
+    # get the crop box if the region extends beyond the frame
+    crop_x1, crop_y1, crop_x2, crop_y2 = (
+        max(0, region[0]),
+        max(0, region[1]),
+        min(width, region[2]),
+        min(height, region[3]),
+    )
+
+    y, u1, u2, v1, v2 = get_yuv_crop(frame.shape, (crop_x1, crop_y1, crop_x2, crop_y2))
+
+    # if the region starts outside the frame, indent the start point in the cropped frame
+    y_channel_x_offset, y_channel_y_offset = abs(min(0, region[0])), abs(
+        min(0, region[1])
+    )
+    uv_channel_x_offset, uv_channel_y_offset = (
+        y_channel_x_offset // 2,
+        y_channel_y_offset // 4,
+    )
+
+    # create the yuv region frame
+    size = (region[3] - region[1]) // 4 * 4
+    yuv_cropped_frame = np.full((size + size // 2, size), 128, dtype=np.uint8)
+    yuv_cropped_frame[0:size, 0:size] = 16
+
+    # copy the y channel
+    yuv_cropped_frame[
+        y_channel_y_offset : y_channel_y_offset + y[3] - y[1],
+        y_channel_x_offset : y_channel_x_offset + y[2] - y[0],
+    ] = frame[y[1] : y[3], y[0] : y[2]]
+
+    uv_crop_width, uv_crop_height = u1[2] - u1[0], u1[3] - u1[1]
+
+    # copy u1, u2, v1, v2
+    uvs = [
+        (u1, 0, size),
+        (u2, size // 2, size),
+        (v1, 0, size + size // 4),
+        (v2, size // 2, size + size // 4),
+    ]
+    for uv, start, size in uvs:
+        yuv_cropped_frame[
+            size + uv_channel_y_offset : size + uv_channel_y_offset + uv_crop_height,
+            start + uv_channel_x_offset : start + uv_channel_x_offset + uv_crop_width,
+        ] = frame[uv[1] : uv[3], uv[0] : uv[2]]
+
+    return yuv_cropped_frame
+
+
+def yuv_crop_and_resize_old(frame, region, height=None):
+    # Crops and resizes a YUV frame while maintaining aspect ratio
     # https://stackoverflow.com/a/57022634
     height = frame.shape[0] // 3 * 2
     width = frame.shape[1]
