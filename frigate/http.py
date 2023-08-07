@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import subprocess as sp
+import tempfile
 import time
 import traceback
 from datetime import datetime, timedelta, timezone
@@ -24,6 +25,7 @@ from flask import (
     jsonify,
     make_response,
     request,
+    send_from_directory,
 )
 from peewee import DoesNotExist, fn, operator
 from playhouse.shortcuts import model_to_dict
@@ -39,7 +41,7 @@ from frigate.const import (
 )
 from frigate.database import TimedSqliteQueueDatabase
 from frigate.events.external import ExternalEventProcessor
-from frigate.models import Event, Recordings, Timeline
+from frigate.models import Event, Recordings, RecordingsToEvents, Timeline
 from frigate.object_processing import TrackedObject
 from frigate.plus import PlusApi
 from frigate.ptz.onvif import OnvifController
@@ -712,6 +714,66 @@ def label_snapshot(camera_name, label):
         return response
 
 
+@bp.route("/events/<id>/record.mp3")
+def event_audio(id):
+    download = request.args.get("download", type=bool)
+
+    try:
+        event: Event = Event.get(Event.id == id)
+    except DoesNotExist:
+        return "Event not found.", 404
+
+    recordings = (
+        Recordings.select(Recordings.path)
+        .join(RecordingsToEvents, on=(Recordings.id == RecordingsToEvents.recording_id))
+        .where(RecordingsToEvents.event_id == event.id)
+    )
+    # Extract file paths from the query
+    file_paths = [rec.path for rec in recordings]
+
+    # Generate a temporary output file name for the combined MP3
+    output_file = tempfile.NamedTemporaryFile(
+        prefix=id, suffix=".mp3", delete=False
+    ).name
+    os.unlink(output_file) # fucking python
+
+    # Create a list of inputs for FFmpeg
+    ffmpeg_inputs = sum([["-i", path] for path in file_paths], [])
+
+    # Use FFmpeg to extract audio from each mp4 and combine into a single MP3
+    cmd = [
+        "ffmpeg",
+        "-y", # fucking python #2
+        *ffmpeg_inputs,
+        "-filter_complex",
+        "concat=n={}:v=0:a=1[aout]".format(len(file_paths)),
+        "-map",
+        "[aout]",
+        "-vn",
+        output_file,
+    ]
+    logger.debug(f"ffmpeg command for {id}/record.mp3: {cmd}")
+    sp.run(cmd)
+
+    if not os.path.exists(output_file):
+        return "Error processing audio files.", 500
+
+    # Trigger download if requested
+    if download:
+        return send_from_directory(
+            os.path.dirname(output_file),
+            os.path.basename(output_file),
+            as_attachment=True,
+            attachment_filename=f"event-{id}.mp3",
+        )
+
+    # Otherwise, just return the combined file's path or content
+    # Depending on your needs, you can directly stream the audio or just provide the path
+    return send_from_directory(
+        os.path.dirname(output_file), os.path.basename(output_file)
+    )
+
+
 @bp.route("/events/<id>/clip.mp4")
 def event_clip(id):
     download = request.args.get("download", type=bool)
@@ -728,10 +790,7 @@ def event_clip(id):
     clip_path = os.path.join(CLIPS_DIR, file_name)
 
     if not os.path.isfile(clip_path):
-        end_ts = (
-            datetime.now().timestamp() if event.end_time is None else event.end_time
-        )
-        return recording_clip(event.camera, event.start_time, end_ts)
+        return recording_clip(event)
 
     response = make_response()
     response.headers["Content-Description"] = "File Transfer"
@@ -1190,7 +1249,7 @@ def latest_frame(camera_name):
         "motion_boxes": request.args.get("motion", type=int),
         "regions": request.args.get("regions", type=int),
     }
-    #TODO: debug print draw_options
+    # TODO: debug print draw_options
     logger.debug(f"Drawing options for {camera_name}: {draw_options}")
     resize_quality = request.args.get("quality", default=70, type=int)
 
@@ -1469,18 +1528,14 @@ def recordings(camera_name):
 
 @bp.route("/<camera_name>/start/<int:start_ts>/end/<int:end_ts>/clip.mp4")
 @bp.route("/<camera_name>/start/<float:start_ts>/end/<float:end_ts>/clip.mp4")
-def recording_clip(camera_name, start_ts, end_ts):
+def recording_clip(event):
+    end_ts = datetime.now().timestamp() if event.end_time is None else event.end_time
     download = request.args.get("download", type=bool)
 
     recordings = (
         Recordings.select()
-        .where(
-            (Recordings.start_time.between(start_ts, end_ts))
-            | (Recordings.end_time.between(start_ts, end_ts))
-            | ((start_ts > Recordings.start_time) & (end_ts < Recordings.end_time))
-        )
-        .where(Recordings.camera == camera_name)
-        .order_by(Recordings.start_time.asc())
+        .join(RecordingsToEvents, on=(Recordings.id == RecordingsToEvents.recording_id))
+        .where(RecordingsToEvents.event_id == event.id)
     )
 
     playlist_lines = []
@@ -1488,13 +1543,13 @@ def recording_clip(camera_name, start_ts, end_ts):
     for clip in recordings:
         playlist_lines.append(f"file '{clip.path}'")
         # if this is the starting clip, add an inpoint
-        if clip.start_time < start_ts:
-            playlist_lines.append(f"inpoint {int(start_ts - clip.start_time)}")
+        if clip.start_time < event.start_ts:
+            playlist_lines.append(f"inpoint {int(event.start_ts - clip.start_time)}")
         # if this is the ending clip, add an outpoint
         if clip.end_time > end_ts:
             playlist_lines.append(f"outpoint {int(end_ts - clip.start_time)}")
 
-    file_name = f"clip_{camera_name}_{start_ts}-{end_ts}.mp4"
+    file_name = f"clip_{event.camera_name}_{event.start_ts}-{end_ts}.mp4"
     path = os.path.join(CACHE_DIR, file_name)
 
     if not os.path.exists(path):
@@ -1525,7 +1580,10 @@ def recording_clip(camera_name, start_ts, end_ts):
 
         if p.returncode != 0:
             logger.error(p.stderr)
-            return f"Could not create clip from recordings for {camera_name}.", 500
+            return (
+                f"Could not create clip for event {event.id} from recordings for {event.camera_name}.",
+                500,
+            )
     else:
         logger.debug(
             f"Ignoring subsequent request for {path} as it already exists in the cache."
