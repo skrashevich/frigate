@@ -790,7 +790,10 @@ def event_clip(id):
     clip_path = os.path.join(CLIPS_DIR, file_name)
 
     if not os.path.isfile(clip_path):
-        return recording_clip(event)
+        end_ts = (
+            datetime.now().timestamp() if event.end_time is None else event.end_time
+        )
+        return recording_clip(event.camera, event.start_time, end_ts)
 
     response = make_response()
     response.headers["Content-Description"] = "File Transfer"
@@ -1528,14 +1531,18 @@ def recordings(camera_name):
 
 @bp.route("/<camera_name>/start/<int:start_ts>/end/<int:end_ts>/clip.mp4")
 @bp.route("/<camera_name>/start/<float:start_ts>/end/<float:end_ts>/clip.mp4")
-def recording_clip(event):
-    end_ts = datetime.now().timestamp() if event.end_time is None else event.end_time
+def recording_clip(camera_name, start_ts, end_ts):
     download = request.args.get("download", type=bool)
 
     recordings = (
         Recordings.select()
-        .join(RecordingsToEvents, on=(Recordings.id == RecordingsToEvents.recording_id))
-        .where(RecordingsToEvents.event_id == event.id)
+        .where(
+            (Recordings.start_time.between(start_ts, end_ts))
+            | (Recordings.end_time.between(start_ts, end_ts))
+            | ((start_ts > Recordings.start_time) & (end_ts < Recordings.end_time))
+        )
+        .where(Recordings.camera == camera_name)
+        .order_by(Recordings.start_time.asc())
     )
 
     playlist_lines = []
@@ -1543,13 +1550,13 @@ def recording_clip(event):
     for clip in recordings:
         playlist_lines.append(f"file '{clip.path}'")
         # if this is the starting clip, add an inpoint
-        if clip.start_time < event.start_ts:
-            playlist_lines.append(f"inpoint {int(event.start_ts - clip.start_time)}")
+        if clip.start_time < start_ts:
+            playlist_lines.append(f"inpoint {int(start_ts - clip.start_time)}")
         # if this is the ending clip, add an outpoint
         if clip.end_time > end_ts:
             playlist_lines.append(f"outpoint {int(end_ts - clip.start_time)}")
 
-    file_name = f"clip_{event.camera_name}_{event.start_ts}-{end_ts}.mp4"
+    file_name = f"clip_{camera_name}_{start_ts}-{end_ts}.mp4"
     path = os.path.join(CACHE_DIR, file_name)
 
     if not os.path.exists(path):
