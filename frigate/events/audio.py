@@ -142,6 +142,8 @@ class AudioTfl:
         for d in raw_detections:
             if d[1] < threshold:
                 break
+            if self.labels[int(d[0])] == "silence":
+                break
             detections.append(
                 (self.labels[int(d[0])], float(d[1]), (d[2], d[3], d[4], d[5]))
             )
