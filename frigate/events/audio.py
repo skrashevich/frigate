@@ -195,8 +195,9 @@ class AudioEventMaintainer(threading.Thread):
             model_detections = self.detector.detect(waveform)
 
             for label, score, _ in model_detections:
-                if label not in self.config.audio.listen:
-                    continue
+                if "*" not in self.config.audio.listen:
+                    if label not in self.config.audio.listen:
+                        continue
 
                 if score > dict((self.config.audio.filters or {}).get(label, {})).get(
                     "threshold", 0.8
