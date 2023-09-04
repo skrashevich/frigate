@@ -30,6 +30,7 @@ from frigate.util.image import (
     calculate_region,
     draw_box_with_label,
     draw_timestamp,
+    is_label_printable,
 )
 
 logger = logging.getLogger(__name__)
@@ -517,6 +518,7 @@ class CameraState:
                     box[1],
                     box[2],
                     box[3],
+                    text,
                     text,
                     f"{obj['score']:.0%} {int(obj['area'])}",
                     thickness=thickness,
