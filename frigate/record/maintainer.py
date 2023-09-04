@@ -242,7 +242,7 @@ class RecordingMaintainer(threading.Thread):
                 # and stop looking at events
                 if event.end_time is None or event.end_time >= start_time.timestamp():
                     overlaps = True
-                    overlapping_event_id = event.id
+                    overlapping_event_id = str(event.id)
                     break
 
             if overlaps:
@@ -260,7 +260,7 @@ class RecordingMaintainer(threading.Thread):
                     try:
                         # Store the relation in the RecordingsToEvents table
                         self.store_recording_to_event_relation(
-                            recording_result.id, overlapping_event_id
+                            str(recording_result.id), overlapping_event_id
                         )
                         logging.debug(
                             f"Successfully stored relation for recording_id: {recording_result}, event_id: {overlapping_event_id} in RecordingsToEvents table"

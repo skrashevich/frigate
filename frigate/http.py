@@ -25,6 +25,7 @@ from flask import (
     jsonify,
     make_response,
     request,
+    send_file,
     send_from_directory,
 )
 from peewee import DoesNotExist, fn, operator
@@ -733,19 +734,18 @@ def event_audio(id):
     file_paths = [rec.path for rec in recordings]
 
     # Generate a temporary output file name for the combined MP3
-    output_file = tempfile.NamedTemporaryFile(
-        prefix=id, suffix=".mp3", delete=False
-    ).name
-    os.unlink(output_file) # fucking python
+    output_file = os.path.join(CACHE_DIR, f"event-{id}.mp3")
 
-    # Create a list of inputs for FFmpeg
-    ffmpeg_inputs = sum([["-i", path] for path in file_paths], [])
+    # Generate FFmpeg inputs list
+    ffmpeg_inputs = []
+    for path in file_paths:
+        ffmpeg_inputs.extend(["-i", path])
 
     # Use FFmpeg to extract audio from each mp4 and combine into a single MP3
     cmd = [
         "ffmpeg",
-        "-y", # fucking python #2
-        *ffmpeg_inputs,
+        "-y",  # fucking python #2
+        ffmpeg_inputs,
         "-filter_complex",
         "concat=n={}:v=0:a=1[aout]".format(len(file_paths)),
         "-map",
@@ -753,7 +753,7 @@ def event_audio(id):
         "-vn",
         output_file,
     ]
-    logger.debug(f"ffmpeg command for {id}/record.mp3: {cmd}")
+    logger.debug(f"ffmpeg command for {id}-record.mp3: {cmd}")
     sp.run(cmd)
 
     if not os.path.exists(output_file):
@@ -761,18 +761,17 @@ def event_audio(id):
 
     # Trigger download if requested
     if download:
-        return send_from_directory(
-            os.path.dirname(output_file),
-            os.path.basename(output_file),
+        response = send_file(
+            path_or_file=output_file,
             as_attachment=True,
             attachment_filename=f"event-{id}.mp3",
         )
+    else:
+        # Otherwise, just return the combined file's path or content
+        # Depending on your needs, you can directly stream the audio or just provide the path
+        response = send_file(path_or_file=output_file)
 
-    # Otherwise, just return the combined file's path or content
-    # Depending on your needs, you can directly stream the audio or just provide the path
-    return send_from_directory(
-        os.path.dirname(output_file), os.path.basename(output_file)
-    )
+    return response
 
 
 @bp.route("/events/<id>/clip.mp4")
