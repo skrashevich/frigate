@@ -151,6 +151,7 @@ audio:
   # Optional: Types of audio to listen for (default: shown below)
   listen:
     - bark
+    - fire_alarm
     - scream
     - speech
     - yell
@@ -361,6 +362,16 @@ record:
     #   active_objects - save all recording segments with active/moving objects
     # NOTE: this mode only applies when the days setting above is greater than 0
     mode: all
+  # Optional: Recording Export Settings
+  export:
+    # Optional: Timelapse Output Args (default: shown below).
+    # NOTE: The default args are set to fit 24 hours of recording into 1 hour playback.
+    # See https://stackoverflow.com/a/58268695 for more info on how these args work.
+    # As an example: if you wanted to go from 24 hours to 30 minutes that would be going
+    # from 86400 seconds to 1800 seconds which would be 1800 / 86400 = 0.02.
+    # The -r (framerate) dictates how smooth the output video is.
+    # So the args would be -vf setpts=0.02*PTS -r 30 in that case.
+    timelapse_args: "-vf setpts=0.04*PTS -r 30"
   # Optional: Event recording settings
   events:
     # Optional: Number of seconds before the event to include (default: shown below)
@@ -425,7 +436,7 @@ rtmp:
   enabled: False
 
 # Optional: Restream configuration
-# Uses https://github.com/AlexxIT/go2rtc (v1.6.2)
+# Uses https://github.com/AlexxIT/go2rtc (v1.7.1)
 go2rtc:
 
 # Optional: jsmpeg stream configuration for WebUI
@@ -624,7 +635,7 @@ ui:
 
 # Optional: Telemetry configuration
 telemetry:
-  # Optional: Enabled network interfaces for bandwidth stats monitoring (default: shown below)
+  # Optional: Enabled network interfaces for bandwidth stats monitoring (default: empty list, let nethogs search all)
   network_interfaces:
     - eth
     - enp
@@ -639,6 +650,7 @@ telemetry:
     # Enable Intel GPU stats (default: shown below)
     intel_gpu_stats: True
     # Enable network bandwidth stats monitoring for camera ffmpeg processes, go2rtc, and object detectors. (default: shown below)
+    # NOTE: The container must either be privileged or have cap_net_admin, cap_net_raw capabilities enabled.
     network_bandwidth: False
   # Optional: Enable the latest version outbound check (default: shown below)
   # NOTE: If you use the HomeAssistant integration, disabling this will prevent it from reporting new versions

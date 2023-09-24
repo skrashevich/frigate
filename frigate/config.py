@@ -48,9 +48,10 @@ DEFAULT_TIME_FORMAT = "%m/%d/%Y %H:%M:%S"
 FRIGATE_ENV_VARS = {k: v for k, v in os.environ.items() if k.startswith("FRIGATE_")}
 
 DEFAULT_TRACKED_OBJECTS = ["person"]
-DEFAULT_LISTEN_AUDIO = ["bark", "speech", "yell", "scream"]
+DEFAULT_LISTEN_AUDIO = ["bark", "fire_alarm", "scream", "speech", "yell"]
 DEFAULT_DETECTORS = {"cpu": {"type": "cpu"}}
 DEFAULT_DETECT_DIMENSIONS = {"width": 1280, "height": 720}
+DEFAULT_TIME_LAPSE_FFMPEG_ARGS = "-vf setpts=0.04*PTS -r 30"
 
 
 class FrigateBaseModel(BaseModel):
@@ -107,7 +108,7 @@ class StatsConfig(FrigateBaseModel):
 
 class TelemetryConfig(FrigateBaseModel):
     network_interfaces: List[str] = Field(
-        default=["eth", "enp", "eno", "ens", "wl", "lo"],
+        default=[],
         title="Enabled network interfaces for bandwidth calculation.",
     )
     stats: StatsConfig = Field(
@@ -198,6 +199,12 @@ class RecordRetainConfig(FrigateBaseModel):
     mode: RetainModeEnum = Field(default=RetainModeEnum.all, title="Retain mode.")
 
 
+class RecordExportConfig(FrigateBaseModel):
+    timelapse_args: str = Field(
+        default=DEFAULT_TIME_LAPSE_FFMPEG_ARGS, title="Timelapse Args"
+    )
+
+
 class RecordConfig(FrigateBaseModel):
     enabled: bool = Field(default=False, title="Enable record on all cameras.")
     sync_on_startup: bool = Field(
@@ -212,6 +219,9 @@ class RecordConfig(FrigateBaseModel):
     )
     events: EventsConfig = Field(
         default_factory=EventsConfig, title="Event specific settings."
+    )
+    export: RecordExportConfig = Field(
+        default_factory=RecordExportConfig, title="Recording Export Config"
     )
     enabled_in_config: Optional[bool] = Field(
         title="Keep track of original state of recording."
@@ -387,7 +397,6 @@ class ZoneConfig(BaseModel):
         default=3,
         title="Number of consecutive frames required for object to be considered present in the zone.",
         gt=0,
-        le=10,
     )
     objects: List[str] = Field(
         default_factory=list,
