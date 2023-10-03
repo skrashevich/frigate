@@ -13,6 +13,7 @@ from pydantic import BaseModel, Extra, Field, parse_obj_as, validator
 from pydantic.fields import PrivateAttr
 
 from frigate.const import (
+    ALL_ATTRIBUTE_LABELS,
     AUDIO_MIN_CONFIDENCE,
     CACHE_DIR,
     DEFAULT_DB_PATH,
@@ -138,8 +139,26 @@ class MqttConfig(FrigateBaseModel):
         return v
 
 
+class ZoomingModeEnum(str, Enum):
+    disabled = "disabled"
+    absolute = "absolute"
+    relative = "relative"
+
+
 class PtzAutotrackConfig(FrigateBaseModel):
     enabled: bool = Field(default=False, title="Enable PTZ object autotracking.")
+    calibrate_on_startup: bool = Field(
+        default=False, title="Perform a camera calibration when Frigate starts."
+    )
+    zooming: ZoomingModeEnum = Field(
+        default=ZoomingModeEnum.disabled, title="Autotracker zooming mode."
+    )
+    zoom_factor: float = Field(
+        default=0.3,
+        title="Zooming factor (0.1-0.75).",
+        ge=0.1,
+        le=0.75,
+    )
     track: List[str] = Field(default=DEFAULT_TRACKED_OBJECTS, title="Objects to track.")
     required_zones: List[str] = Field(
         default_factory=list,
@@ -152,6 +171,27 @@ class PtzAutotrackConfig(FrigateBaseModel):
     timeout: int = Field(
         default=10, title="Seconds to delay before returning to preset."
     )
+    movement_weights: Optional[Union[float, List[float]]] = Field(
+        default=[],
+        title="Internal value used for PTZ movements based on the speed of your camera's motor.",
+    )
+
+    @validator("movement_weights", pre=True)
+    def validate_weights(cls, v):
+        if v is None:
+            return None
+
+        if isinstance(v, str):
+            weights = list(map(float, v.split(",")))
+        elif isinstance(v, list):
+            weights = [float(val) for val in v]
+        else:
+            raise ValueError("Invalid type for movement_weights")
+
+        if len(weights) != 3:
+            raise ValueError("movement_weights must have exactly 3 floats")
+
+        return weights
 
 
 class OnvifConfig(FrigateBaseModel):
@@ -434,7 +474,7 @@ class ZoneConfig(BaseModel):
 
 class ObjectConfig(FrigateBaseModel):
     track: List[str] = Field(default=DEFAULT_TRACKED_OBJECTS, title="Objects to track.")
-    filters: Optional[Dict[str, FilterConfig]] = Field(title="Object filters.")
+    filters: Dict[str, FilterConfig] = Field(default={}, title="Object filters.")
     mask: Union[str, List[str]] = Field(default="", title="Object mask.")
 
 
@@ -1037,6 +1077,13 @@ class FrigateConfig(FrigateBaseModel):
         if config.mqtt.user or config.mqtt.password:
             config.mqtt.user = config.mqtt.user.format(**FRIGATE_ENV_VARS)
             config.mqtt.password = config.mqtt.password.format(**FRIGATE_ENV_VARS)
+
+        # set default min_score for object attributes
+        for attribute in ALL_ATTRIBUTE_LABELS:
+            if not config.objects.filters.get(attribute):
+                config.objects.filters[attribute] = FilterConfig(min_score=0.7)
+            elif config.objects.filters[attribute].min_score == 0.5:
+                config.objects.filters[attribute].min_score = 0.7
 
         # Global config to propagate down to camera level
         global_config = config.dict(

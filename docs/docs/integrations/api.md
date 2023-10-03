@@ -155,18 +155,20 @@ Version info
 
 Events from the database. Accepts the following query string parameters:
 
-| param                | Type | Description                                   |
-| -------------------- | ---- | --------------------------------------------- |
-| `before`             | int  | Epoch time                                    |
-| `after`              | int  | Epoch time                                    |
-| `cameras`            | str  | , separated list of cameras                   |
-| `labels`             | str  | , separated list of labels                    |
-| `zones`              | str  | , separated list of zones                     |
-| `limit`              | int  | Limit the number of events returned           |
-| `has_snapshot`       | int  | Filter to events that have snapshots (0 or 1) |
-| `has_clip`           | int  | Filter to events that have clips (0 or 1)     |
-| `include_thumbnails` | int  | Include thumbnails in the response (0 or 1)   |
-| `in_progress`        | int  | Limit to events in progress (0 or 1)          |
+| param                | Type | Description                                     |
+| -------------------- | ---- | ----------------------------------------------- |
+| `before`             | int  | Epoch time                                      |
+| `after`              | int  | Epoch time                                      |
+| `cameras`            | str  | , separated list of cameras                     |
+| `labels`             | str  | , separated list of labels                      |
+| `zones`              | str  | , separated list of zones                       |
+| `limit`              | int  | Limit the number of events returned             |
+| `has_snapshot`       | int  | Filter to events that have snapshots (0 or 1)   |
+| `has_clip`           | int  | Filter to events that have clips (0 or 1)       |
+| `include_thumbnails` | int  | Include thumbnails in the response (0 or 1)     |
+| `in_progress`        | int  | Limit to events in progress (0 or 1)            |
+| `time_range`         | str  | Time range in format after,before (00:00,24:00) |
+| `timezone`           | str  | Timezone to use for time range                  |
 
 ### `GET /api/timeline`
 
@@ -252,7 +254,7 @@ Accepts the following query string parameters, but they are only applied when an
 
 Returns the snapshot image from the latest event for the given camera and label combo. Using `any` as the label will return the latest thumbnail regardless of type.
 
-### `GET /api/<camera_name>/recording/<frame_time>/snapshot.png`
+### `GET /api/<camera_name>/recordings/<frame_time>/snapshot.png`
 
 Returns the snapshot image from the specific point in that cameras recordings.
 
@@ -319,7 +321,7 @@ Create a manual event with a given `label` (ex: doorbell press) to capture a spe
 
 ```json
 {
-  "subLabel": "some_string", // add sub label to event
+  "sub_label": "some_string", // add sub label to event
   "duration": 30, // predetermined length of event (default: 30 seconds) or can be to null for indeterminate length event
   "include_recording": true, // whether the event should save recordings along with the snapshot that is taken
   "draw": {

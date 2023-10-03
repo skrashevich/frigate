@@ -324,7 +324,7 @@ motion:
   # Low values will cause things like moving shadows to be detected as motion for longer.
   # https://www.geeksforgeeks.org/background-subtraction-in-an-image-using-concept-of-running-average/
   frame_alpha: 0.01
-  # Optional: Height of the resized motion frame  (default: 50)
+  # Optional: Height of the resized motion frame  (default: 100)
   # Higher values will result in more granular motion detection at the expense of higher CPU usage.
   # Lower values result in less CPU, but small changes may not register as motion.
   frame_height: 100
@@ -584,6 +584,23 @@ cameras:
       autotracking:
         # Optional: enable/disable object autotracking. (default: shown below)
         enabled: False
+        # Optional: calibrate the camera on startup (default: shown below)
+        # A calibration will move the PTZ in increments and measure the time it takes to move.
+        # The results are used to help estimate the position of tracked objects after a camera move.
+        # Frigate will update your config file automatically after a calibration with
+        # a "movement_weights" entry for the camera. You should then set calibrate_on_startup to False.
+        calibrate_on_startup: False
+        # Optional: the mode to use for zooming in/out on objects during autotracking. (default: shown below)
+        # Available options are: disabled, absolute, and relative
+        #   disabled - don't zoom in/out on autotracked objects, use pan/tilt only
+        #   absolute - use absolute zooming (supported by most PTZ capable cameras)
+        #   relative - use relative zooming (not supported on all PTZs, but makes concurrent pan/tilt/zoom movements)
+        zooming: disabled
+        # Optional: A value to change the behavior of zooming on autotracked objects. (default: shown below)
+        # A lower value will keep more of the scene in view around a tracked object.
+        # A higher value will zoom in more on a tracked object, but Frigate may lose tracking more quickly.
+        # The value should be between 0.1 and 0.75
+        zoom_factor: 0.3
         # Optional: list of objects to track from labelmap.txt (default: shown below)
         track:
           - person
@@ -591,9 +608,11 @@ cameras:
         required_zones:
           - zone_name
         # Required: Name of ONVIF preset in camera's firmware to return to when tracking is over. (default: shown below)
-        return_preset: preset_name
+        return_preset: home
         # Optional: Seconds to delay before returning to preset. (default: shown below)
         timeout: 10
+        # Optional: Values generated automatically by a camera calibration. Do not modify these manually. (default: shown below)
+        movement_weights: []
 
     # Optional: Configuration for how to sort the cameras in the Birdseye view.
     birdseye:

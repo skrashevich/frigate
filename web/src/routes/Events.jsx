@@ -49,6 +49,8 @@ const monthsAgo = (num) => {
 
 export default function Events({ path, ...props }) {
   const apiHost = useApiHost();
+  const { data: config } = useSWR('config');
+  const timezone = useMemo(() => config?.ui?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone, [config]);
   const [searchParams, setSearchParams] = useState({
     before: null,
     after: null,
@@ -56,6 +58,8 @@ export default function Events({ path, ...props }) {
     labels: props.labels ?? 'all',
     zones: props.zones ?? 'all',
     sub_labels: props.sub_labels ?? 'all',
+    time_range: '00:00,24:00',
+    timezone,
     favorites: props.favorites ?? 0,
     event: props.event,
   });
@@ -88,14 +92,17 @@ export default function Events({ path, ...props }) {
     showDeleteFavorite: false,
   });
 
-  const eventsFetcher = useCallback((path, params) => {
-    if (searchParams.event) {
-      path = `${path}/${searchParams.event}`;
-      return axios.get(path).then((res) => [res.data]);
-    }
-    params = { ...params, include_thumbnails: 0, limit: API_LIMIT };
-    return axios.get(path, { params }).then((res) => res.data);
-  }, [searchParams]);
+  const eventsFetcher = useCallback(
+    (path, params) => {
+      if (searchParams.event) {
+        path = `${path}/${searchParams.event}`;
+        return axios.get(path).then((res) => [res.data]);
+      }
+      params = { ...params, include_thumbnails: 0, limit: API_LIMIT };
+      return axios.get(path, { params }).then((res) => res.data);
+    },
+    [searchParams]
+  );
 
   const getKey = useCallback(
     (index, prevData) => {
@@ -111,8 +118,6 @@ export default function Events({ path, ...props }) {
   );
 
   const { data: eventPages, mutate, size, setSize, isValidating } = useSWRInfinite(getKey, eventsFetcher);
-
-  const { data: config } = useSWR('config');
 
   const { data: allLabels } = useSWR(['labels']);
   const { data: allSubLabels } = useSWR(['sub_labels', { split_joined: 1 }]);
@@ -249,6 +254,13 @@ export default function Events({ path, ...props }) {
     [searchParams, setSearchParams, state, setState]
   );
 
+  const handleSelectTimeRange = useCallback(
+    (timeRange) => {
+      setSearchParams({ ...searchParams, time_range: timeRange });
+    },
+    [searchParams]
+  );
+
   const onFilter = useCallback(
     (name, value) => {
       const updatedParams = { ...searchParams, [name]: value };
@@ -275,12 +287,16 @@ export default function Events({ path, ...props }) {
     (node) => {
       if (isValidating) return;
       if (observer.current) observer.current.disconnect();
-      observer.current = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && !isDone) {
-          setSize(size + 1);
-        }
-      });
-      if (node) observer.current.observe(node);
+      try {
+        observer.current = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting && !isDone) {
+            setSize(size + 1);
+          }
+        });
+        if (node) observer.current.observe(node);
+      } catch (e) {
+        // no op
+      }
     },
     [size, setSize, isValidating, isDone]
   );
@@ -371,7 +387,7 @@ export default function Events({ path, ...props }) {
           />
         )}
         {searchParams.event && (
-          <Button className="ml-2" onClick={() => onFilter('event',null)} type="text">
+          <Button className="ml-2" onClick={() => onFilter('event', null)} type="text">
             View All
           </Button>
         )}
@@ -409,7 +425,10 @@ export default function Events({ path, ...props }) {
               download
             />
           )}
-          {(event?.data?.type || "object") == "object" && downloadEvent.end_time && downloadEvent.has_snapshot && !downloadEvent.plus_id && (
+          {(event?.data?.type || 'object') == 'object' &&
+            downloadEvent.end_time &&
+            downloadEvent.has_snapshot &&
+            !downloadEvent.plus_id && (
             <MenuItem
               icon={UploadPlus}
               label={uploading.includes(downloadEvent.id) ? 'Uploading...' : 'Send to Frigate+'}
@@ -469,10 +488,7 @@ export default function Events({ path, ...props }) {
               dateRange={{ before: searchParams.before * 1000 || null, after: searchParams.after * 1000 || null }}
               close={() => setState({ ...state, showCalendar: false })}
             >
-              <Timepicker
-                dateRange={{ before: searchParams.before * 1000 || null, after: searchParams.after * 1000 || null }}
-                onChange={handleSelectDateRange}
-              />
+              <Timepicker timeRange={searchParams.time_range} onChange={handleSelectTimeRange} />
             </Calendar>
           </Menu>
         </span>
@@ -576,7 +592,11 @@ export default function Events({ path, ...props }) {
             <p className="mb-2">Confirm deletion of saved event.</p>
           </div>
           <div className="p-2 flex justify-start flex-row-reverse space-x-2">
-            <Button className="ml-2" onClick={() => setDeleteFavoriteState({ ...state, showDeleteFavorite: false })} type="text">
+            <Button
+              className="ml-2"
+              onClick={() => setDeleteFavoriteState({ ...state, showDeleteFavorite: false })}
+              type="text"
+            >
               Cancel
             </Button>
             <Button
@@ -645,10 +665,12 @@ export default function Events({ path, ...props }) {
                           <Camera className="h-5 w-5 mr-2 inline" />
                           {event.camera.replaceAll('_', ' ')}
                         </div>
-                        {event.zones.length ? <div className="capitalize  text-sm flex align-center">
-                          <Zone className="w-5 h-5 mr-2 inline" />
-                          {event.zones.join(', ').replaceAll('_', ' ')}
-                        </div> : null}
+                        {event.zones.length ? (
+                          <div className="capitalize  text-sm flex align-center">
+                            <Zone className="w-5 h-5 mr-2 inline" />
+                            {event.zones.join(', ').replaceAll('_', ' ')}
+                          </div>
+                        ) : null}
                         <div className="capitalize  text-sm flex align-center">
                           <Score className="w-5 h-5 mr-2 inline" onClick={(e) => onLabelsClick(e, event.id)} />
                           {(event?.data?.top_score || event.top_score || 0) == 0
@@ -660,7 +682,7 @@ export default function Events({ path, ...props }) {
                         </div>
                       </div>
                       <div class="hidden sm:flex flex-col justify-end mr-2">
-                        {event.end_time && event.has_snapshot && (event?.data?.type || "object") == "object" && (
+                        {event.end_time && event.has_snapshot && (event?.data?.type || 'object') == 'object' && (
                           <Fragment>
                             {event.plus_id ? (
                               <div className="uppercase text-xs underline">

@@ -55,8 +55,7 @@ export default function TimelineEventOverlay({ event, eventOverlay, cameraConfig
         ) : null}
       </div>
       {isHovering && (
-        <div className="absolute bg-white dark:bg-slate-800 p-4 block dark:text-white text-lg" style={getHoverStyle()}>
-          {event.label == 'person' && event.sub_label && (<div>Name: {event.sub_label}</div>)}
+        <div className="absolute bg-white dark:bg-slate-800 p-4 block text-black dark:text-white text-lg" style={getHoverStyle()}>
           <div>{`Area: ${getObjectArea()} px`}</div>
           <div>{`Ratio: ${getObjectRatio()}`}</div>
         </div>
