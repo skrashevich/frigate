@@ -22,6 +22,7 @@ from flask import (
     Flask,
     Response,
     current_app,
+    escape,
     jsonify,
     make_response,
     request,
@@ -31,6 +32,7 @@ from flask import (
 from peewee import DoesNotExist, fn, operator
 from playhouse.shortcuts import model_to_dict
 from tzlocal import get_localzone_name
+from werkzeug.utils import secure_filename
 
 from frigate.config import FrigateConfig
 from frigate.const import (
@@ -77,6 +79,13 @@ def create_app(
     plus_api: PlusApi,
 ):
     app = Flask(__name__)
+
+    @app.before_request
+    def check_csrf():
+        if request.method in ["GET", "HEAD", "OPTIONS", "TRACE"]:
+            pass
+        if "origin" in request.headers and "x-csrf-token" not in request.headers:
+            return jsonify({"success": False, "message": "Missing CSRF header"}), 401
 
     @app.before_request
     def _db_connect():
@@ -549,10 +558,14 @@ def event_thumbnail(id, max_cache_age=2592000):
                     if tracked_obj is not None:
                         thumbnail_bytes = tracked_obj.get_thumbnail()
         except Exception:
-            return "Event not found", 404
+            return make_response(
+                jsonify({"success": False, "message": "Event not found"}), 404
+            )
 
     if thumbnail_bytes is None:
-        return "Event not found", 404
+        return make_response(
+            jsonify({"success": False, "message": "Event not found"}), 404
+        )
 
     # android notifications prefer a 2:1 ratio
     if format == "android":
@@ -647,7 +660,9 @@ def event_snapshot(id):
         event = Event.get(Event.id == id, Event.end_time != None)
         event_complete = True
         if not event.has_snapshot:
-            return "Snapshot not available", 404
+            return make_response(
+                jsonify({"success": False, "message": "Snapshot not available"}), 404
+            )
         # read snapshot from disk
         with open(
             os.path.join(CLIPS_DIR, f"{event.camera}-{id}.jpg"), "rb"
@@ -669,12 +684,18 @@ def event_snapshot(id):
                             quality=request.args.get("quality", default=70, type=int),
                         )
         except Exception:
-            return "Event not found", 404
+            return make_response(
+                jsonify({"success": False, "message": "Event not found"}), 404
+            )
     except Exception:
-        return "Event not found", 404
+        return make_response(
+            jsonify({"success": False, "message": "Event not found"}), 404
+        )
 
     if jpg_bytes is None:
-        return "Event not found", 404
+        return make_response(
+            jsonify({"success": False, "message": "Event not found"}), 404
+        )
 
     response = make_response(jpg_bytes)
     response.headers["Content-Type"] = "image/jpeg"
@@ -785,10 +806,14 @@ def event_clip(id):
     try:
         event: Event = Event.get(Event.id == id)
     except DoesNotExist:
-        return "Event not found.", 404
+        return make_response(
+            jsonify({"success": False, "message": "Event not found"}), 404
+        )
 
     if not event.has_clip:
-        return "Clip not available", 404
+        return make_response(
+            jsonify({"success": False, "message": "Clip not available"}), 404
+        )
 
     file_name = f"{event.camera}-{id}.mp4"
     clip_path = os.path.join(CLIPS_DIR, file_name)
@@ -852,6 +877,11 @@ def events():
     in_progress = request.args.get("in_progress", type=int)
     include_thumbnails = request.args.get("include_thumbnails", default=1, type=int)
     favorites = request.args.get("favorites", type=int)
+    min_score = request.args.get("min_score", type=float)
+    max_score = request.args.get("max_score", type=float)
+    is_submitted = request.args.get("is_submitted", type=int)
+    min_length = request.args.get("min_length", type=float)
+    max_length = request.args.get("max_length", type=float)
 
     clauses = []
 
@@ -974,6 +1004,24 @@ def events():
     if favorites:
         clauses.append((Event.retain_indefinitely == favorites))
 
+    if max_score is not None:
+        clauses.append((Event.data["score"] <= max_score))
+
+    if min_score is not None:
+        clauses.append((Event.data["score"] >= min_score))
+
+    if min_length is not None:
+        clauses.append(((Event.end_time - Event.start_time) >= min_length))
+
+    if max_length is not None:
+        clauses.append(((Event.end_time - Event.start_time) <= max_length))
+
+    if is_submitted is not None:
+        if is_submitted == 0:
+            clauses.append((Event.plus_id.is_null()))
+        else:
+            clauses.append((Event.plus_id != ""))
+
     if len(clauses) == 0:
         clauses.append((True))
 
@@ -1094,7 +1142,9 @@ def config_raw():
         config_file = config_file_yaml
 
     if not os.path.isfile(config_file):
-        return "Could not find file", 410
+        return make_response(
+            jsonify({"success": False, "message": "Could not find file"}), 404
+        )
 
     with open(config_file, "r") as f:
         raw_config = f.read()
@@ -1110,7 +1160,12 @@ def config_save():
     new_config = request.get_data().decode()
 
     if not new_config:
-        return "Config with body param is required", 400
+        return make_response(
+            jsonify(
+                {"success": False, "message": "Config with body param is required"}
+            ),
+            400,
+        )
 
     # Validate the config schema
     try:
@@ -1120,7 +1175,7 @@ def config_save():
             jsonify(
                 {
                     "success": False,
-                    "message": f"\nConfig Error:\n\n{str(traceback.format_exc())}",
+                    "message": f"\nConfig Error:\n\n{escape(str(traceback.format_exc()))}",
                 }
             ),
             400,
@@ -1155,14 +1210,30 @@ def config_save():
             restart_frigate()
         except Exception as e:
             logging.error(f"Error restarting Frigate: {e}")
-            return "Config successfully saved, unable to restart Frigate", 200
+            return make_response(
+                jsonify(
+                    {
+                        "success": True,
+                        "message": "Config successfully saved, unable to restart Frigate",
+                    }
+                ),
+                200,
+            )
 
-        return (
-            "Config successfully saved, restarting (this can take up to one minute)...",
+        return make_response(
+            jsonify(
+                {
+                    "success": True,
+                    "message": "Config successfully saved, restarting (this can take up to one minute)...",
+                }
+            ),
             200,
         )
     else:
-        return "Config successfully saved.", 200
+        return make_response(
+            jsonify({"success": True, "message": "Config successfully saved."}),
+            200,
+        )
 
 
 @bp.route("/config/set", methods=["PUT"])
@@ -1202,9 +1273,20 @@ def config_set():
             )
     except Exception as e:
         logging.error(f"Error updating config: {e}")
-        return "Error updating config", 500
+        return make_response(
+            jsonify({"success": False, "message": "Error updating config"}),
+            500,
+        )
 
-    return "Config successfully updated, restart to apply", 200
+    return make_response(
+        jsonify(
+            {
+                "success": True,
+                "message": "Config successfully updated, restart to apply",
+            }
+        ),
+        200,
+    )
 
 
 @bp.route("/config/schema.json")
@@ -1264,7 +1346,10 @@ def mjpeg_feed(camera_name):
             mimetype="multipart/x-mixed-replace; boundary=frame",
         )
     else:
-        return "Camera named {} not found".format(camera_name), 404
+        return make_response(
+            jsonify({"success": False, "message": "Camera not found"}),
+            404,
+        )
 
 
 @bp.route("/<camera_name>/ptz/info")
@@ -1272,7 +1357,10 @@ def camera_ptz_info(camera_name):
     if camera_name in current_app.frigate_config.cameras:
         return jsonify(current_app.onvif.get_camera_info(camera_name))
     else:
-        return "Camera named {} not found".format(camera_name), 404
+        return make_response(
+            jsonify({"success": False, "message": "Camera not found"}),
+            404,
+        )
 
 
 @bp.route("/<camera_name>/latest.jpg")
@@ -1339,7 +1427,10 @@ def latest_frame(camera_name):
         width = int(height * frame.shape[1] / frame.shape[0])
 
         if frame is None:
-            return "Unable to get valid frame from {}".format(camera_name), 500
+            return make_response(
+                jsonify({"success": False, "message": "Unable to get valid frame"}),
+                500,
+            )
 
         if height < 1 or width < 1:
             return (
@@ -1375,7 +1466,10 @@ def latest_frame(camera_name):
         response.headers["Cache-Control"] = "no-store"
         return response
     else:
-        return "Camera named {} not found".format(camera_name), 404
+        return make_response(
+            jsonify({"success": False, "message": "Camera not found"}),
+            404,
+        )
 
 
 @bp.route("/<camera_name>/recordings/<frame_time>/snapshot.png")
@@ -1390,7 +1484,10 @@ def get_snapshot_from_recording(camera_name: str, frame_time: str):
             Recordings.start_time,
         )
         .where(
-            ((frame_time > Recordings.start_time) & (frame_time < Recordings.end_time))
+            (
+                (frame_time >= Recordings.start_time)
+                & (frame_time <= Recordings.end_time)
+            )
         )
         .where(Recordings.camera == camera_name)
     )
@@ -1425,7 +1522,15 @@ def get_snapshot_from_recording(camera_name: str, frame_time: str):
         response.headers["Content-Type"] = "image/png"
         return response
     except DoesNotExist:
-        return "Recording not found for {} at {}".format(camera_name, frame_time), 404
+        return make_response(
+            jsonify(
+                {
+                    "success": False,
+                    "message": "Recording not found at {}".format(frame_time),
+                }
+            ),
+            404,
+        )
 
 
 @bp.route("/recordings/storage", methods=["GET"])
@@ -1627,8 +1732,13 @@ def recording_clip(camera_name, start_ts, end_ts):
 
         if p.returncode != 0:
             logger.error(p.stderr)
-            return (
-                f"Could not create clip for event {event.id} from recordings for {event.camera_name}.",
+            return make_response(
+                jsonify(
+                    {
+                        "success": False,
+                        "message": f"Could not create clip for event {event.id} from recordings for {event.camera_name}.",
+                    }
+                ),
                 500,
             )
     else:
@@ -1686,7 +1796,15 @@ def vod_ts(camera_name, start_ts, end_ts):
 
     if not clips:
         logger.error("No recordings found for the requested time range")
-        return "No recordings found.", 404
+        return make_response(
+            jsonify(
+                {
+                    "success": False,
+                    "message": "No recordings found.",
+                }
+            ),
+            404,
+        )
 
     hour_ago = datetime.now() - timedelta(hours=1)
     return jsonify(
@@ -1729,11 +1847,27 @@ def vod_event(id):
         event: Event = Event.get(Event.id == id)
     except DoesNotExist:
         logger.error(f"Event not found: {id}")
-        return "Event not found.", 404
+        return make_response(
+            jsonify(
+                {
+                    "success": False,
+                    "message": "Event not found.",
+                }
+            ),
+            404,
+        )
 
     if not event.has_clip:
         logger.error(f"Event does not have recordings: {id}")
-        return "Recordings not available", 404
+        return make_response(
+            jsonify(
+                {
+                    "success": False,
+                    "message": "Recordings not available.",
+                }
+            ),
+            404,
+        )
 
     clip_path = os.path.join(CLIPS_DIR, f"{event.camera}-{id}.mp4")
 
@@ -1810,12 +1944,21 @@ def export_recording(camera_name: str, start_time, end_time):
         else PlaybackFactorEnum.realtime,
     )
     exporter.start()
-    return "Starting export of recording", 200
+    return make_response(
+        jsonify(
+            {
+                "success": True,
+                "message": "Starting export of recording.",
+            }
+        ),
+        200,
+    )
 
 
 @bp.route("/export/<file_name>", methods=["DELETE"])
 def export_delete(file_name: str):
-    file = os.path.join(EXPORT_DIR, file_name)
+    safe_file_name = secure_filename(file_name)
+    file = os.path.join(EXPORT_DIR, safe_file_name)
 
     if not os.path.exists(file):
         return make_response(
@@ -1824,7 +1967,15 @@ def export_delete(file_name: str):
         )
 
     os.unlink(file)
-    return "Successfully deleted file", 200
+    return make_response(
+        jsonify(
+            {
+                "success": True,
+                "message": "Successfully deleted file.",
+            }
+        ),
+        200,
+    )
 
 
 def imagestream(detected_frames_processor, camera_name, fps, height, draw_options):
@@ -1924,8 +2075,11 @@ def logs(service: str):
     }
     service_location = log_locations.get(service)
 
-    if not service:
-        return f"{service} is not a valid service", 404
+    if not service_location:
+        return make_response(
+            jsonify({"success": False, "message": "Not a valid service"}),
+            404,
+        )
 
     try:
         file = open(service_location, "r")
@@ -1933,4 +2087,7 @@ def logs(service: str):
         file.close()
         return contents, 200
     except FileNotFoundError as e:
-        return f"Could not find log file: {e}", 500
+        return make_response(
+            jsonify({"success": False, "message": f"Could not find log file: {e}"}),
+            500,
+        )

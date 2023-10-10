@@ -13,8 +13,9 @@ Each role can only be assigned to one input per camera. The options for roles ar
 
 | Role     | Description                                                                              |
 | -------- | ---------------------------------------------------------------------------------------- |
-| `detect` | Main feed for object detection                                                           |
+| `detect` | Main feed for object detection. [docs](object_detectors.md)                              |
 | `record` | Saves segments of the video feed based on configuration settings. [docs](record.md)      |
+| `audio`  | Feed for audio based detection. [docs](audio_detectors.md)                               |
 | `rtmp`   | Deprecated: Broadcast as an RTMP feed for other services to consume. [docs](restream.md) |
 
 ```yaml
@@ -53,7 +54,7 @@ For camera model specific settings check the [camera specific](camera_specific.m
 
 :::caution
 
-Not every PTZ supports ONVIF, which is the standard protocol Frigate uses to communicate with your camera. Check your camera documentation or manufacturer's website to ensure your camera supports ONVIF. If your camera supports ONVIF and you continue to have trouble, make sure your camera is running the latest firmware.
+Not every PTZ supports ONVIF, which is the standard protocol Frigate uses to communicate with your camera. Check the [official list of ONVIF conformant products](https://www.onvif.org/conformant-products/), your camera documentation, or camera manufacturer's website to ensure your PTZ supports ONVIF. Also, ensure your camera is running the latest firmware.
 
 :::
 
@@ -78,12 +79,17 @@ An ONVIF-capable camera that supports relative movement within the field of view
 
 This list of working and non-working PTZ cameras is based on user feedback.
 
-| Brand or specific camera | PTZ Controls | Autotracking | Notes                                                   |
-| ------------------------ | :----------: | :----------: | ------------------------------------------------------- |
-| Amcrest                  |      ✅      |     ⛔️      | Some older models (IP2M-841) don't support autotracking |
-| Amcrest ASH21            |      ❌      |      ❌      | No ONVIF support                                        |
-| Dahua                    |      ✅      |      ✅      |
-| Reolink 511WA            |      ✅      |      ❌      | Zoom only                                               |
-| Reolink E1 Zoom          |      ✅      |      ❌      |                                                         |
-| Tapo C210                |      ❌      |      ❌      | Incomplete ONVIF support                                |
-| Vikylin PTZ-2804X-I2     |      ❌      |      ❌      | Incomplete ONVIF support                                |
+| Brand or specific camera | PTZ Controls | Autotracking | Notes                                                                                                                                           |
+| ------------------------ | :----------: | :----------: | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Amcrest                  |      ✅      |      ✅      | ⛔️ Generally, Amcrest should work, but some older models (like the common IP2M-841) don't support autotracking                                 |
+| Amcrest ASH21            |      ❌      |      ❌      | No ONVIF support                                                                                                                                |
+| Ctronics PTZ             |      ✅      |      ❌      |                                                                                                                                                 |
+| Dahua                    |      ✅      |      ✅      |                                                                                                                                                 |
+| Foscam R5                |      ✅      |      ❌      |                                                                                                                                                 |
+| Hikvision                |      ✅      |      ❌      | Incomplete ONVIF support (MoveStatus won't update even on latest firmware) - reported with HWP-N4215IH-DE and DS-2DE3304W-DE, but likely others |
+| Reolink 511WA            |      ✅      |      ❌      | Zoom only                                                                                                                                       |
+| Reolink E1 Pro           |      ✅      |      ❌      |                                                                                                                                                 |
+| Reolink E1 Zoom          |      ✅      |      ❌      |                                                                                                                                                 |
+| Sunba 405-D20X           |      ✅      |      ❌      |                                                                                                                                                 |
+| Tapo C210                |      ❌      |      ❌      | Incomplete ONVIF support                                                                                                                        |
+| Vikylin PTZ-2804X-I2     |      ❌      |      ❌      | Incomplete ONVIF support                                                                                                                        |

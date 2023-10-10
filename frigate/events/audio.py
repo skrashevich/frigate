@@ -165,7 +165,7 @@ class AudioEventMaintainer(threading.Thread):
         self.recordings_info_queue = recordings_info_queue
         self.feature_metrics = feature_metrics
         self.inter_process_communicator = inter_process_communicator
-        self.detections: dict[dict[str, any]] = feature_metrics
+        self.detections: dict[dict[str, any]] = {}
         self.stop_event = stop_event
         self.detector = AudioTfl(stop_event, self.config.audio.num_threads)
         self.shape = (int(round(AUDIO_DURATION * AUDIO_SAMPLE_RATE)),)
@@ -198,6 +198,8 @@ class AudioEventMaintainer(threading.Thread):
             model_detections = self.detector.detect(waveform)
 
             for label, score, _ in model_detections:
+                logger.debug(f"Heard {label} with a score of {score}")
+
                 if "*" not in self.config.audio.listen:
                     if label not in self.config.audio.listen:
                         continue
