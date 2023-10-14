@@ -5,8 +5,10 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable
 
 from frigate.config import FrigateConfig
+from frigate.const import INSERT_MANY_RECORDINGS
+from frigate.models import Recordings
 from frigate.ptz.onvif import OnvifCommandEnum, OnvifController
-from frigate.types import CameraMetricsTypes, FeatureMetricsTypes
+from frigate.types import CameraMetricsTypes, FeatureMetricsTypes, PTZMetricsTypes
 from frigate.util.services import restart_frigate
 
 logger = logging.getLogger(__name__)
@@ -40,16 +42,15 @@ class Dispatcher:
         onvif: OnvifController,
         camera_metrics: dict[str, CameraMetricsTypes],
         feature_metrics: dict[str, FeatureMetricsTypes],
+        ptz_metrics: dict[str, PTZMetricsTypes],
         communicators: list[Communicator],
     ) -> None:
         self.config = config
         self.onvif = onvif
         self.camera_metrics = camera_metrics
         self.feature_metrics = feature_metrics
+        self.ptz_metrics = ptz_metrics
         self.comms = communicators
-
-        for comm in self.comms:
-            comm.subscribe(self._receive)
 
         self._camera_settings_handlers: dict[str, Callable] = {
             "audio": self._on_audio_command,
@@ -62,6 +63,9 @@ class Dispatcher:
             "recordings": self._on_recordings_command,
             "snapshots": self._on_snapshots_command,
         }
+
+        for comm in self.comms:
+            comm.subscribe(self._receive)
 
     def _receive(self, topic: str, payload: str) -> None:
         """Handle receiving of payload from communicators."""
@@ -84,6 +88,10 @@ class Dispatcher:
                 return
         elif topic == "restart":
             restart_frigate()
+        elif topic == INSERT_MANY_RECORDINGS:
+            Recordings.insert_many(payload).execute()
+        else:
+            self.publish(topic, payload, retain=False)
 
     def publish(self, topic: str, payload: Any, retain: bool = False) -> None:
         """Handle publishing to communicators."""
@@ -165,16 +173,14 @@ class Dispatcher:
         ptz_autotracker_settings = self.config.cameras[camera_name].onvif.autotracking
 
         if payload == "ON":
-            if not self.camera_metrics[camera_name]["ptz_autotracker_enabled"].value:
+            if not self.ptz_metrics[camera_name]["ptz_autotracker_enabled"].value:
                 logger.info(f"Turning on ptz autotracker for {camera_name}")
-                self.camera_metrics[camera_name]["ptz_autotracker_enabled"].value = True
+                self.ptz_metrics[camera_name]["ptz_autotracker_enabled"].value = True
                 ptz_autotracker_settings.enabled = True
         elif payload == "OFF":
-            if self.camera_metrics[camera_name]["ptz_autotracker_enabled"].value:
+            if self.ptz_metrics[camera_name]["ptz_autotracker_enabled"].value:
                 logger.info(f"Turning off ptz autotracker for {camera_name}")
-                self.camera_metrics[camera_name][
-                    "ptz_autotracker_enabled"
-                ].value = False
+                self.ptz_metrics[camera_name]["ptz_autotracker_enabled"].value = False
                 ptz_autotracker_settings.enabled = False
 
         self.publish(f"{camera_name}/ptz_autotracker/state", payload, retain=True)

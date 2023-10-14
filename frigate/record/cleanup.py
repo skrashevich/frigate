@@ -11,8 +11,8 @@ from pathlib import Path
 from peewee import DatabaseError, chunked
 
 from frigate.config import FrigateConfig, RetainModeEnum
-from frigate.const import RECORD_DIR
-from frigate.models import Event, Recordings, RecordingsToDelete, Timeline
+from frigate.const import CACHE_DIR, RECORD_DIR
+from frigate.models import Event, Recordings, RecordingsToDelete
 from frigate.record.util import remove_empty_directories
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class RecordingCleanup(threading.Thread):
 
     def clean_tmp_clips(self) -> None:
         """delete any clips in the cache that are more than 5 minutes old."""
-        for p in Path("/tmp/cache").rglob("clip_*.mp4"):
+        for p in Path(CACHE_DIR).rglob("clip_*.mp4"):
             logger.debug(f"Checking tmp clip {p}.")
             if p.stat().st_mtime < (datetime.datetime.now().timestamp() - 60 * 1):
                 logger.debug("Deleting tmp clip.")
@@ -48,7 +48,10 @@ class RecordingCleanup(threading.Thread):
         expire_before = (
             datetime.datetime.now() - datetime.timedelta(days=expire_days)
         ).timestamp()
-        no_camera_recordings: Recordings = Recordings.select().where(
+        no_camera_recordings: Recordings = Recordings.select(
+            Recordings.id,
+            Recordings.path,
+        ).where(
             Recordings.camera.not_in(list(self.config.cameras.keys())),
             Recordings.end_time < expire_before,
         )
@@ -59,7 +62,13 @@ class RecordingCleanup(threading.Thread):
             deleted_recordings.add(recording.id)
 
         logger.debug(f"Expiring {len(deleted_recordings)} recordings")
-        Recordings.delete().where(Recordings.id << deleted_recordings).execute()
+        # delete up to 100,000 at a time
+        max_deletes = 100000
+        deleted_recordings_list = list(deleted_recordings)
+        for i in range(0, len(deleted_recordings_list), max_deletes):
+            Recordings.delete().where(
+                Recordings.id << deleted_recordings_list[i : i + max_deletes]
+            ).execute()
         logger.debug("End deleted cameras.")
 
         logger.debug("Start all cameras.")
@@ -73,7 +82,14 @@ class RecordingCleanup(threading.Thread):
 
             # Get recordings to check for expiration
             recordings: Recordings = (
-                Recordings.select()
+                Recordings.select(
+                    Recordings.id,
+                    Recordings.start_time,
+                    Recordings.end_time,
+                    Recordings.path,
+                    Recordings.objects,
+                    Recordings.motion,
+                )
                 .where(
                     Recordings.camera == camera,
                     Recordings.end_time < expire_date,
@@ -83,7 +99,10 @@ class RecordingCleanup(threading.Thread):
 
             # Get all the events to check against
             events: Event = (
-                Event.select()
+                Event.select(
+                    Event.start_time,
+                    Event.end_time,
+                )
                 .where(
                     Event.camera == camera,
                     # need to ensure segments for all events starting
@@ -103,7 +122,7 @@ class RecordingCleanup(threading.Thread):
                 keep = False
                 # Now look for a reason to keep this recording segment
                 for idx in range(event_start, len(events)):
-                    event = events[idx]
+                    event: Event = events[idx]
 
                     # if the event starts in the future, stop checking events
                     # and let this recording segment expire
@@ -139,15 +158,6 @@ class RecordingCleanup(threading.Thread):
                 ):
                     Path(recording.path).unlink(missing_ok=True)
                     deleted_recordings.add(recording.id)
-
-                    # delete timeline entries relevant to this recording segment
-                    Timeline.delete().where(
-                        Timeline.timestamp.between(
-                            recording.start_time, recording.end_time
-                        ),
-                        Timeline.timestamp < expire_date,
-                        Timeline.camera == camera,
-                    ).execute()
 
             logger.debug(f"Expiring {len(deleted_recordings)} recordings")
             # delete up to 100,000 at a time
@@ -222,8 +232,9 @@ class RecordingCleanup(threading.Thread):
         logger.debug("End sync recordings.")
 
     def run(self) -> None:
-        # on startup sync recordings with disk
-        self.sync_recordings()
+        # on startup sync recordings with disk if enabled
+        if self.config.record.sync_on_startup:
+            self.sync_recordings()
 
         # Expire tmp clips every minute, recordings and clean directories every hour.
         for counter in itertools.cycle(range(self.config.record.expire_interval)):

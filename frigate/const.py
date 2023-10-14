@@ -28,6 +28,7 @@ AUDIO_DURATION = 0.975
 AUDIO_FORMAT = "s16le"
 AUDIO_MAX_BIT_RANGE = 32768.0
 AUDIO_SAMPLE_RATE = 16000
+AUDIO_MIN_CONFIDENCE = 0.5
 
 # Regex Consts
 
@@ -47,6 +48,6 @@ DRIVER_INTEL_iHD = "iHD"
 MAX_SEGMENT_DURATION = 600
 MAX_PLAYLIST_SECONDS = 7200  # support 2 hour segments for a single playlist to account for cameras with inconsistent segment times
 
-# Queue Values
+# Internal Comms Topics
 
-DEFAULT_QUEUE_BUFFER_SIZE = 2000 * 1000  # 2MB
+INSERT_MANY_RECORDINGS = "insert_many_recordings"

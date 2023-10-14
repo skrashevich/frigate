@@ -30,7 +30,13 @@ from playhouse.sqliteq import SqliteQueueDatabase
 from tzlocal import get_localzone_name
 
 from frigate.config import FrigateConfig
-from frigate.const import CLIPS_DIR, CONFIG_DIR, MAX_SEGMENT_DURATION, RECORD_DIR
+from frigate.const import (
+    CACHE_DIR,
+    CLIPS_DIR,
+    CONFIG_DIR,
+    MAX_SEGMENT_DURATION,
+    RECORD_DIR,
+)
 from frigate.events.external import ExternalEventProcessor
 from frigate.models import Event, Recordings, Timeline
 from frigate.object_processing import TrackedObject
@@ -370,10 +376,9 @@ def set_sub_label(id):
             jsonify({"success": False, "message": "Event " + id + " not found"}), 404
         )
 
-    if request.json:
-        new_sub_label = request.json.get("subLabel")
-    else:
-        new_sub_label = None
+    json: dict[str, any] = request.get_json(silent=True) or {}
+    new_sub_label = json.get("subLabel")
+    new_score = json.get("subLabelScore")
 
     if new_sub_label and len(new_sub_label) > 100:
         return make_response(
@@ -387,6 +392,18 @@ def set_sub_label(id):
             400,
         )
 
+    if new_score is not None and (new_score > 1.0 or new_score < 0):
+        return make_response(
+            jsonify(
+                {
+                    "success": False,
+                    "message": new_score
+                    + " does not fit within the expected bounds 0 <= score <= 1.0",
+                }
+            ),
+            400,
+        )
+
     if not event.end_time:
         tracked_obj: TrackedObject = (
             current_app.detected_frames_processor.camera_states[
@@ -395,9 +412,15 @@ def set_sub_label(id):
         )
 
         if tracked_obj:
-            tracked_obj.obj_data["sub_label"] = new_sub_label
+            tracked_obj.obj_data["sub_label"] = (new_sub_label, new_score)
 
     event.sub_label = new_sub_label
+
+    if new_score:
+        data = event.data
+        data["sub_label_score"] = new_score
+        event.data = data
+
     event.save()
     return make_response(
         jsonify(
@@ -567,33 +590,24 @@ def timeline():
         .where(reduce(operator.and_, clauses))
         .order_by(Timeline.timestamp.asc())
         .limit(limit)
+        .dicts()
     )
 
-    return jsonify([model_to_dict(t) for t in timeline])
+    return jsonify([t for t in timeline])
 
 
 @bp.route("/<camera_name>/<label>/best.jpg")
 @bp.route("/<camera_name>/<label>/thumbnail.jpg")
 def label_thumbnail(camera_name, label):
     label = unquote(label)
-    if label == "any":
-        event_query = (
-            Event.select()
-            .where(Event.camera == camera_name)
-            .order_by(Event.start_time.desc())
-        )
-    else:
-        event_query = (
-            Event.select()
-            .where(Event.camera == camera_name)
-            .where(Event.label == label)
-            .order_by(Event.start_time.desc())
-        )
+    event_query = Event.select(fn.MAX(Event.id)).where(Event.camera == camera_name)
+    if label != "any":
+        event_query = event_query.where(Event.label == label)
 
     try:
-        event = event_query.get()
+        event = event_query.scalar()
 
-        return event_thumbnail(event.id, 60)
+        return event_thumbnail(event, 60)
     except DoesNotExist:
         frame = np.zeros((175, 175, 3), np.uint8)
         ret, jpg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
@@ -660,14 +674,14 @@ def label_snapshot(camera_name, label):
     label = unquote(label)
     if label == "any":
         event_query = (
-            Event.select()
+            Event.select(Event.id)
             .where(Event.camera == camera_name)
             .where(Event.has_snapshot == True)
             .order_by(Event.start_time.desc())
         )
     else:
         event_query = (
-            Event.select()
+            Event.select(Event.id)
             .where(Event.camera == camera_name)
             .where(Event.label == label)
             .where(Event.has_snapshot == True)
@@ -761,7 +775,6 @@ def events():
     favorites = request.args.get("favorites", type=int)
 
     clauses = []
-    excluded_fields = []
 
     selected_columns = [
         Event.id,
@@ -846,9 +859,7 @@ def events():
     if in_progress is not None:
         clauses.append((Event.end_time.is_null(in_progress)))
 
-    if not include_thumbnails:
-        excluded_fields.append(Event.thumbnail)
-    else:
+    if include_thumbnails:
         selected_columns.append(Event.thumbnail)
 
     if favorites:
@@ -862,9 +873,10 @@ def events():
         .where(reduce(operator.and_, clauses))
         .order_by(Event.start_time.desc())
         .limit(limit)
+        .dicts()
     )
 
-    return jsonify([model_to_dict(e, exclude=excluded_fields) for e in events])
+    return jsonify([e for e in events])
 
 
 @bp.route("/events/<camera_name>/<label>/create", methods=["POST"])
@@ -892,6 +904,7 @@ def create_event(camera_name, label):
             label,
             json.get("source_type", "api"),
             json.get("sub_label", None),
+            json.get("score", 0),
             json.get("duration", 30),
             json.get("include_recording", True),
             json.get("draw", {}),
@@ -900,7 +913,7 @@ def create_event(camera_name, label):
     except Exception as e:
         return make_response(
             jsonify({"success": False, "message": f"An unknown error occurred: {e}"}),
-            404,
+            500,
         )
 
     return make_response(
@@ -1082,7 +1095,7 @@ def config_set():
         logging.error(f"Error updating config: {e}")
         return "Error updating config", 500
 
-    return "Config successfully updated", 200
+    return "Config successfully updated, restart to apply", 200
 
 
 @bp.route("/config/schema.json")
@@ -1228,7 +1241,10 @@ def get_snapshot_from_recording(camera_name: str, frame_time: str):
 
     frame_time = float(frame_time)
     recording_query = (
-        Recordings.select()
+        Recordings.select(
+            Recordings.path,
+            Recordings.start_time,
+        )
         .where(
             ((frame_time > Recordings.start_time) & (frame_time < Recordings.end_time))
         )
@@ -1411,7 +1427,11 @@ def recording_clip(camera_name, start_ts, end_ts):
     download = request.args.get("download", type=bool)
 
     recordings = (
-        Recordings.select()
+        Recordings.select(
+            Recordings.path,
+            Recordings.start_time,
+            Recordings.end_time,
+        )
         .where(
             (Recordings.start_time.between(start_ts, end_ts))
             | (Recordings.end_time.between(start_ts, end_ts))
@@ -1433,7 +1453,7 @@ def recording_clip(camera_name, start_ts, end_ts):
             playlist_lines.append(f"outpoint {int(end_ts - clip.start_time)}")
 
     file_name = f"clip_{camera_name}_{start_ts}-{end_ts}.mp4"
-    path = f"/tmp/cache/{file_name}"
+    path = os.path.join(CACHE_DIR, file_name)
 
     if not os.path.exists(path):
         ffmpeg_cmd = [
@@ -1487,7 +1507,7 @@ def recording_clip(camera_name, start_ts, end_ts):
 @bp.route("/vod/<camera_name>/start/<float:start_ts>/end/<float:end_ts>")
 def vod_ts(camera_name, start_ts, end_ts):
     recordings = (
-        Recordings.select()
+        Recordings.select(Recordings.path, Recordings.duration, Recordings.end_time)
         .where(
             Recordings.start_time.between(start_ts, end_ts)
             | Recordings.end_time.between(start_ts, end_ts)
@@ -1595,9 +1615,44 @@ def vod_event(id):
     )
 
 
-@bp.route("/export/<camera_name>/start/<start_time>/end/<end_time>", methods=["POST"])
-def export_recording(camera_name: str, start_time: int, end_time: int):
-    playback_factor = request.get_json(silent=True).get("playback", "realtime")
+@bp.route(
+    "/export/<camera_name>/start/<int:start_time>/end/<int:end_time>", methods=["POST"]
+)
+@bp.route(
+    "/export/<camera_name>/start/<float:start_time>/end/<float:end_time>",
+    methods=["POST"],
+)
+def export_recording(camera_name: str, start_time, end_time):
+    if not camera_name or not current_app.frigate_config.cameras.get(camera_name):
+        return make_response(
+            jsonify(
+                {"success": False, "message": f"{camera_name} is not a valid camera."}
+            ),
+            404,
+        )
+
+    json: dict[str, any] = request.get_json(silent=True) or {}
+    playback_factor = json.get("playback", "realtime")
+
+    recordings_count = (
+        Recordings.select()
+        .where(
+            Recordings.start_time.between(start_time, end_time)
+            | Recordings.end_time.between(start_time, end_time)
+            | ((start_time > Recordings.start_time) & (end_time < Recordings.end_time))
+        )
+        .where(Recordings.camera == camera_name)
+        .count()
+    )
+
+    if recordings_count <= 0:
+        return make_response(
+            jsonify(
+                {"success": False, "message": "No recordings found for time range"}
+            ),
+            400,
+        )
+
     exporter = RecordingExporter(
         current_app.frigate_config,
         camera_name,

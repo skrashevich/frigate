@@ -1,6 +1,6 @@
 ---
 id: contributing
-title: Contributing
+title: Contributing To The Main Code Base
 ---
 
 ## Getting the source
@@ -68,10 +68,6 @@ cameras:
           input_args: -re -stream_loop -1 -fflags +genpts
           roles:
             - detect
-    detect:
-      height: 1080
-      width: 1920
-      fps: 5
 ```
 
 These input args tell ffmpeg to read the mp4 file in an infinite loop. You can use any valid ffmpeg input here.
@@ -105,10 +101,16 @@ This should show <50% CPU in top, and ~80% CPU without `-c:v h264_v4l2m2m`.
 ffmpeg -c:v h264_v4l2m2m -re -stream_loop -1 -i https://streams.videolan.org/ffmpeg/incoming/720p60.mp4 -f rawvideo -pix_fmt yuv420p pipe: > /dev/null
 ```
 
-**NVIDIA**
+**NVIDIA GPU**
 
 ```shell
 ffmpeg -c:v h264_cuvid -re -stream_loop -1 -i https://streams.videolan.org/ffmpeg/incoming/720p60.mp4 -f rawvideo -pix_fmt yuv420p pipe: > /dev/null
+```
+
+**NVIDIA Jetson**
+
+```shell
+ffmpeg -c:v h264_nvmpi -re -stream_loop -1 -i https://streams.videolan.org/ffmpeg/incoming/720p60.mp4 -f rawvideo -pix_fmt yuv420p pipe: > /dev/null
 ```
 
 **VAAPI**

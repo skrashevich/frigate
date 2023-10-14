@@ -6,18 +6,18 @@ import shutil
 import signal
 import sys
 import traceback
+from multiprocessing import Queue
 from multiprocessing.synchronize import Event as MpEvent
 from types import FrameType
 from typing import Optional
 
-import faster_fifo as ff
 import psutil
-from faster_fifo import Queue
 from peewee_migrate import Router
 from playhouse.sqlite_ext import SqliteExtDatabase
 from playhouse.sqliteq import SqliteQueueDatabase
 
 from frigate.comms.dispatcher import Communicator, Dispatcher
+from frigate.comms.inter_process import InterProcessCommunicator
 from frigate.comms.mqtt import MqttClient
 from frigate.comms.ws import WebSocketClient
 from frigate.config import FrigateConfig
@@ -26,7 +26,6 @@ from frigate.const import (
     CLIPS_DIR,
     CONFIG_DIR,
     DEFAULT_DB_PATH,
-    DEFAULT_QUEUE_BUFFER_SIZE,
     EXPORT_DIR,
     MODEL_CACHE_DIR,
     RECORD_DIR,
@@ -37,18 +36,19 @@ from frigate.events.external import ExternalEventProcessor
 from frigate.events.maintainer import EventProcessor
 from frigate.http import create_app
 from frigate.log import log_process, root_configurer
-from frigate.models import Event, Recordings, Timeline
+from frigate.models import Event, Recordings, RecordingsToDelete, Timeline
 from frigate.object_detection import ObjectDetectProcess
 from frigate.object_processing import TrackedObjectProcessor
 from frigate.output import output_frames
 from frigate.plus import PlusApi
 from frigate.ptz.autotrack import PtzAutoTrackerThread
 from frigate.ptz.onvif import OnvifController
+from frigate.record.cleanup import RecordingCleanup
 from frigate.record.record import manage_recordings
 from frigate.stats import StatsEmitter, stats_init
 from frigate.storage import StorageMaintainer
 from frigate.timeline import TimelineProcessor
-from frigate.types import CameraMetricsTypes, FeatureMetricsTypes
+from frigate.types import CameraMetricsTypes, FeatureMetricsTypes, PTZMetricsTypes
 from frigate.version import VERSION
 from frigate.video import capture_camera, track_camera
 from frigate.watchdog import FrigateWatchdog
@@ -59,14 +59,15 @@ logger = logging.getLogger(__name__)
 class FrigateApp:
     def __init__(self) -> None:
         self.stop_event: MpEvent = mp.Event()
-        self.detection_queue: Queue = ff.Queue()
+        self.detection_queue: Queue = mp.Queue()
         self.detectors: dict[str, ObjectDetectProcess] = {}
         self.detection_out_events: dict[str, MpEvent] = {}
         self.detection_shms: list[mp.shared_memory.SharedMemory] = []
-        self.log_queue: Queue = ff.Queue()
+        self.log_queue: Queue = mp.Queue()
         self.plus_api = PlusApi()
         self.camera_metrics: dict[str, CameraMetricsTypes] = {}
         self.feature_metrics: dict[str, FeatureMetricsTypes] = {}
+        self.ptz_metrics: dict[str, PTZMetricsTypes] = {}
         self.processes: dict[str, int] = {}
 
     def set_environment_vars(self) -> None:
@@ -108,7 +109,7 @@ class FrigateApp:
         user_config = FrigateConfig.parse_file(config_file)
         self.config = user_config.runtime_config(self.plus_api)
 
-        for camera_name, camera_config in self.config.cameras.items():
+        for camera_name in self.config.cameras.keys():
             # create camera_metrics
             self.camera_metrics[camera_name] = {
                 "camera_fps": mp.Value("d", 0.0),  # type: ignore[typeddict-item]
@@ -135,13 +136,6 @@ class FrigateApp:
                     "i",
                     self.config.cameras[camera_name].motion.improve_contrast,
                 ),
-                "ptz_autotracker_enabled": mp.Value(  # type: ignore[typeddict-item]
-                    # issue https://github.com/python/typeshed/issues/8799
-                    # from mypy 0.981 onwards
-                    "i",
-                    self.config.cameras[camera_name].onvif.autotracking.enabled,
-                ),
-                "ptz_stopped": mp.Event(),
                 "motion_threshold": mp.Value(  # type: ignore[typeddict-item]
                     # issue https://github.com/python/typeshed/issues/8799
                     # from mypy 0.981 onwards
@@ -170,7 +164,23 @@ class FrigateApp:
                 "capture_process": None,
                 "process": None,
             }
-            self.camera_metrics[camera_name]["ptz_stopped"].set()
+            self.ptz_metrics[camera_name] = {
+                "ptz_autotracker_enabled": mp.Value(  # type: ignore[typeddict-item]
+                    # issue https://github.com/python/typeshed/issues/8799
+                    # from mypy 0.981 onwards
+                    "i",
+                    self.config.cameras[camera_name].onvif.autotracking.enabled,
+                ),
+                "ptz_stopped": mp.Event(),
+                "ptz_reset": mp.Event(),
+                "ptz_start_time": mp.Value("d", 0.0),  # type: ignore[typeddict-item]
+                # issue https://github.com/python/typeshed/issues/8799
+                # from mypy 0.981 onwards
+                "ptz_stop_time": mp.Value("d", 0.0),  # type: ignore[typeddict-item]
+                # issue https://github.com/python/typeshed/issues/8799
+                # from mypy 0.981 onwards
+            }
+            self.ptz_metrics[camera_name]["ptz_stopped"].set()
             self.feature_metrics[camera_name] = {
                 "audio_enabled": mp.Value(  # type: ignore[typeddict-item]
                     # issue https://github.com/python/typeshed/issues/8799
@@ -199,22 +209,32 @@ class FrigateApp:
 
     def init_queues(self) -> None:
         # Queues for clip processing
-        self.event_queue: Queue = ff.Queue(DEFAULT_QUEUE_BUFFER_SIZE)
-        self.event_processed_queue: Queue = ff.Queue(DEFAULT_QUEUE_BUFFER_SIZE)
+        self.event_queue: Queue = mp.Queue()
+        self.event_processed_queue: Queue = mp.Queue()
         self.video_output_queue: Queue = mp.Queue(
-            maxsize=len(self.config.cameras.keys()) * 2
+            maxsize=sum(camera.enabled for camera in self.config.cameras.values()) * 2
         )
 
         # Queue for cameras to push tracked objects to
         self.detected_frames_queue: Queue = mp.Queue(
-            maxsize=len(self.config.cameras.keys()) * 2
+            maxsize=sum(camera.enabled for camera in self.config.cameras.values()) * 2
         )
 
-        # Queue for recordings info
-        self.recordings_info_queue: Queue = ff.Queue(DEFAULT_QUEUE_BUFFER_SIZE)
+        # Queue for object recordings info
+        self.object_recordings_info_queue: Queue = mp.Queue()
+
+        # Queue for audio recordings info if enabled
+        self.audio_recordings_info_queue: Optional[Queue] = (
+            mp.Queue()
+            if len([c for c in self.config.cameras.values() if c.audio.enabled]) > 0
+            else None
+        )
 
         # Queue for timeline events
-        self.timeline_queue: Queue = ff.Queue(DEFAULT_QUEUE_BUFFER_SIZE)
+        self.timeline_queue: Queue = mp.Queue()
+
+        # Queue for inter process communication
+        self.inter_process_queue: Queue = mp.Queue()
 
     def init_database(self) -> None:
         def vacuum_db(db: SqliteExtDatabase) -> None:
@@ -271,7 +291,13 @@ class FrigateApp:
         recording_process = mp.Process(
             target=manage_recordings,
             name="recording_manager",
-            args=(self.config, self.recordings_info_queue, self.feature_metrics),
+            args=(
+                self.config,
+                self.inter_process_queue,
+                self.object_recordings_info_queue,
+                self.audio_recordings_info_queue,
+                self.feature_metrics,
+            ),
         )
         recording_process.daemon = True
         self.recording_process = recording_process
@@ -289,9 +315,11 @@ class FrigateApp:
                 "cache_size": -512 * 1000,  # 512MB of cache,
                 "synchronous": "NORMAL",  # Safe when using WAL https://www.sqlite.org/pragma.html#pragma_synchronous
             },
-            timeout=60,
+            timeout=max(
+                60, 10 * len([c for c in self.config.cameras.values() if c.enabled])
+            ),
         )
-        models = [Event, Recordings, Timeline]
+        models = [Event, Recordings, RecordingsToDelete, Timeline]
         self.db.bind(models)
 
     def init_stats(self) -> None:
@@ -302,6 +330,11 @@ class FrigateApp:
     def init_external_event_processor(self) -> None:
         self.external_event_processor = ExternalEventProcessor(
             self.config, self.event_queue
+        )
+
+    def init_inter_process_communicator(self) -> None:
+        self.inter_process_communicator = InterProcessCommunicator(
+            self.inter_process_queue
         )
 
     def init_web_server(self) -> None:
@@ -317,7 +350,7 @@ class FrigateApp:
         )
 
     def init_onvif(self) -> None:
-        self.onvif_controller = OnvifController(self.config, self.camera_metrics)
+        self.onvif_controller = OnvifController(self.config, self.ptz_metrics)
 
     def init_dispatcher(self) -> None:
         comms: list[Communicator] = []
@@ -326,11 +359,14 @@ class FrigateApp:
             comms.append(MqttClient(self.config))
 
         comms.append(WebSocketClient(self.config))
+        comms.append(self.inter_process_communicator)
+
         self.dispatcher = Dispatcher(
             self.config,
             self.onvif_controller,
             self.camera_metrics,
             self.feature_metrics,
+            self.ptz_metrics,
             comms,
         )
 
@@ -375,7 +411,7 @@ class FrigateApp:
         self.ptz_autotracker_thread = PtzAutoTrackerThread(
             self.config,
             self.onvif_controller,
-            self.camera_metrics,
+            self.ptz_metrics,
             self.stop_event,
         )
         self.ptz_autotracker_thread.start()
@@ -388,7 +424,7 @@ class FrigateApp:
             self.event_queue,
             self.event_processed_queue,
             self.video_output_queue,
-            self.recordings_info_queue,
+            self.object_recordings_info_queue,
             self.ptz_autotracker_thread,
             self.stop_event,
         )
@@ -426,6 +462,7 @@ class FrigateApp:
                     self.detection_out_events[name],
                     self.detected_frames_queue,
                     self.camera_metrics[name],
+                    self.ptz_metrics[name],
                 ),
             )
             camera_process.daemon = True
@@ -454,7 +491,12 @@ class FrigateApp:
             audio_process = mp.Process(
                 target=listen_to_audio,
                 name="audio_capture",
-                args=(self.config, self.feature_metrics),
+                args=(
+                    self.config,
+                    self.audio_recordings_info_queue,
+                    self.feature_metrics,
+                    self.inter_process_communicator,
+                ),
             )
             audio_process.daemon = True
             audio_process.start()
@@ -481,6 +523,10 @@ class FrigateApp:
     def start_event_cleanup(self) -> None:
         self.event_cleanup = EventCleanup(self.config, self.stop_event)
         self.event_cleanup.start()
+
+    def start_record_cleanup(self) -> None:
+        self.record_cleanup = RecordingCleanup(self.config, self.stop_event)
+        self.record_cleanup.start()
 
     def start_storage_maintainer(self) -> None:
         self.storage_maintainer = StorageMaintainer(self.config, self.stop_event)
@@ -547,6 +593,7 @@ class FrigateApp:
             self.init_recording_manager()
             self.init_go2rtc()
             self.bind_database()
+            self.init_inter_process_communicator()
             self.init_dispatcher()
         except Exception as e:
             print(e)
@@ -566,6 +613,7 @@ class FrigateApp:
         self.start_timeline_processor()
         self.start_event_processor()
         self.start_event_cleanup()
+        self.start_record_cleanup()
         self.start_stats_emitter()
         self.start_watchdog()
         self.check_shm()
@@ -577,7 +625,7 @@ class FrigateApp:
         signal.signal(signal.SIGTERM, receiveSignal)
 
         try:
-            self.flask_app.run(host="127.0.0.1", port=5001, debug=False)
+            self.flask_app.run(host="127.0.0.1", port=5001, debug=False, threaded=True)
         except KeyboardInterrupt:
             pass
 
@@ -602,6 +650,7 @@ class FrigateApp:
         self.ptz_autotracker_thread.join()
         self.event_processor.join()
         self.event_cleanup.join()
+        self.record_cleanup.join()
         self.stats_emitter.join()
         self.frigate_watchdog.join()
         self.db.stop()
@@ -616,10 +665,13 @@ class FrigateApp:
             self.event_processed_queue,
             self.video_output_queue,
             self.detected_frames_queue,
-            self.recordings_info_queue,
+            self.object_recordings_info_queue,
+            self.audio_recordings_info_queue,
             self.log_queue,
+            self.inter_process_queue,
         ]:
-            while not queue.empty():
-                queue.get_nowait()
-            queue.close()
-            queue.join_thread()
+            if queue is not None:
+                while not queue.empty():
+                    queue.get_nowait()
+                queue.close()
+                queue.join_thread()

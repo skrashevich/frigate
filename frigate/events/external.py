@@ -6,10 +6,10 @@ import logging
 import os
 import random
 import string
+from multiprocessing import Queue
 from typing import Optional
 
 import cv2
-from faster_fifo import Queue
 
 from frigate.config import CameraConfig, FrigateConfig
 from frigate.const import CLIPS_DIR
@@ -31,6 +31,7 @@ class ExternalEventProcessor:
         label: str,
         source_type: str,
         sub_label: Optional[str],
+        score: int,
         duration: Optional[int],
         include_recording: bool,
         draw: dict[str, any],
@@ -56,6 +57,7 @@ class ExternalEventProcessor:
                     "id": event_id,
                     "label": label,
                     "sub_label": sub_label,
+                    "score": score,
                     "camera": camera,
                     "start_time": now - camera_config.record.events.pre_capture,
                     "end_time": now

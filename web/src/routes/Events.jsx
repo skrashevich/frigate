@@ -389,7 +389,7 @@ export default function Events({ path, ...props }) {
               download
             />
           )}
-          {downloadEvent.end_time && downloadEvent.has_snapshot && !downloadEvent.plus_id && (
+          {(event?.data?.type || "object") == "object" && downloadEvent.end_time && downloadEvent.has_snapshot && !downloadEvent.plus_id && (
             <MenuItem
               icon={UploadPlus}
               label={uploading.includes(downloadEvent.id) ? 'Uploading...' : 'Send to Frigate+'}
@@ -622,22 +622,22 @@ export default function Events({ path, ...props }) {
                           <Camera className="h-5 w-5 mr-2 inline" />
                           {event.camera.replaceAll('_', ' ')}
                         </div>
-                        <div className="capitalize  text-sm flex align-center">
+                        {event.zones.length ? <div className="capitalize  text-sm flex align-center">
                           <Zone className="w-5 h-5 mr-2 inline" />
                           {event.zones.join(', ').replaceAll('_', ' ')}
-                        </div>
+                        </div> : null}
                         <div className="capitalize  text-sm flex align-center">
                           <Score className="w-5 h-5 mr-2 inline" />
                           {(event?.data?.top_score || event.top_score || 0) == 0
                             ? null
-                            : `Label: ${((event?.data?.top_score || event.top_score) * 100).toFixed(0)}%`}
+                            : `${event.label}: ${((event?.data?.top_score || event.top_score) * 100).toFixed(0)}%`}
                           {(event?.data?.sub_label_score || 0) == 0
                             ? null
-                            : `, Sub Label: ${(event?.data?.sub_label_score * 100).toFixed(0)}%`}
+                            : `, ${event.sub_label}: ${(event?.data?.sub_label_score * 100).toFixed(0)}%`}
                         </div>
                       </div>
                       <div class="hidden sm:flex flex-col justify-end mr-2">
-                        {event.end_time && event.has_snapshot && (
+                        {event.end_time && event.has_snapshot && (event?.data?.type || "object") == "object" && (
                           <Fragment>
                             {event.plus_id ? (
                               <div className="uppercase text-xs underline">

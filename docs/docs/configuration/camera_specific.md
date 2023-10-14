@@ -80,8 +80,8 @@ cameras:
     rtmp:
       enabled: False # <-- RTMP should be disabled if your stream is not H264
     detect:
-      width: # <---- update for your camera's resolution
-      height: # <---- update for your camera's resolution
+      width: # <- optional, by default Frigate tries to automatically detect resolution 
+      height: # <- optional, by default Frigate tries to automatically detect resolution 
 ```
 
 ### Blue Iris RTSP Cameras
@@ -108,21 +108,20 @@ According to [this discussion](https://github.com/blakeblackshear/frigate/issues
 ```yaml
 go2rtc:
   streams:
-    reolink: 
-      - http://reolink_ip/flv?port=1935&app=bcs&stream=channel0_main.bcs&user=username&password=password
-      - "ffmpeg:reolink#audio=opus"
-    reolink_sub: 
-      - http://reolink_ip/flv?port=1935&app=bcs&stream=channel0_ext.bcs&user=username&password=password
+    your_reolink_camera: 
+      - "ffmpeg:http://reolink_ip/flv?port=1935&app=bcs&stream=channel0_main.bcs&user=username&password=password#video=copy#audio=copy#audio=opus"
+    your_reolink_camera_sub: 
+      - "ffmpeg:http://reolink_ip/flv?port=1935&app=bcs&stream=channel0_ext.bcs&user=username&password=password"
 
 cameras:
   reolink:
     ffmpeg:
       inputs:
-        - path: rtsp://127.0.0.1:8554/reolink?video=copy&audio=aac
+        - path: rtsp://127.0.0.1:8554/your_reolink_camera?video=copy&audio=aac
           input_args: preset-rtsp-restream
           roles:
             - record
-        - path: rtsp://127.0.0.1:8554/reolink_sub?video=copy
+        - path: rtsp://127.0.0.1:8554/your_reolink_camera_sub?video=copy
           input_args: preset-rtsp-restream
           roles:
             - detect
@@ -141,7 +140,7 @@ go2rtc:
       - rtspx://192.168.1.1:7441/abcdefghijk
 ```
 
-[See the go2rtc docs for more information](https://github.com/AlexxIT/go2rtc/tree/v1.5.0#source-rtsp)
+[See the go2rtc docs for more information](https://github.com/AlexxIT/go2rtc/tree/v1.6.2#source-rtsp)
 
 In the Unifi 2.0 update Unifi Protect Cameras had a change in audio sample rate which causes issues for ffmpeg. The input rate needs to be set for record and rtmp if used directly with unifi protect.
 

@@ -1,6 +1,6 @@
 ---
 id: index
-title: Configuration File
+title: Frigate Configuration Reference
 ---
 
 For Home Assistant Addon installations, the config file needs to be in the root of your Home Assistant config directory (same location as `configuration.yaml`). It can be named `frigate.yaml` or `frigate.yml`, but if both files exist `frigate.yaml` will be preferred and `frigate.yml` will be ignored.
@@ -19,9 +19,6 @@ cameras:
         - path: rtsp://viewer:{FRIGATE_RTSP_PASSWORD}@10.0.10.10:554/cam/realmonitor?channel=1&subtype=2
           roles:
             - detect
-    detect:
-      width: 1280
-      height: 720
 ```
 
 ### VSCode Configuration Schema
@@ -104,7 +101,7 @@ detectors:
   # Required: name of the detector
   detector_name:
     # Required: type of the detector
-    # Frigate provided types include 'cpu', 'edgetpu', and 'openvino' (default: shown below)
+    # Frigate provided types include 'cpu', 'edgetpu', 'openvino' and 'tensorrt' (default: shown below)
     # Additional detector types can also be plugged in.
     # Detectors may require additional configuration.
     # Refer to the Detectors configuration page for more information.
@@ -157,6 +154,12 @@ audio:
     - scream
     - speech
     - yell
+  # Optional: Filters to configure detection.
+  filters:
+    # Label that matches label in listen config.
+    speech:
+      # Minimum score that triggers an audio event (default: shown below)
+      threshold: 0.8
 
 # Optional: logger verbosity settings
 logger:
@@ -344,6 +347,8 @@ record:
   # Optional: Number of minutes to wait between cleanup runs (default: shown below)
   # This can be used to reduce the frequency of deleting recording segments from disk if you want to minimize i/o
   expire_interval: 60
+  # Optional: Sync recordings with disk on startup (default: shown below).
+  sync_on_startup: False
   # Optional: Retention settings for recording
   retain:
     # Optional: Number of days to retain recordings regardless of events (default: shown below)
@@ -409,6 +414,8 @@ snapshots:
     # Optional: Per object retention days
     objects:
       person: 15
+  # Optional: quality of the encoded jpeg, 0-100 (default: shown below)
+  quality: 70
 
 # Optional: RTMP configuration
 # NOTE: RTMP is deprecated in favor of restream
@@ -418,7 +425,7 @@ rtmp:
   enabled: False
 
 # Optional: Restream configuration
-# Uses https://github.com/AlexxIT/go2rtc (v1.5.0)
+# Uses https://github.com/AlexxIT/go2rtc (v1.6.2)
 go2rtc:
 
 # Optional: jsmpeg stream configuration for WebUI
@@ -572,7 +579,7 @@ cameras:
         # Required: Begin automatically tracking an object when it enters any of the listed zones.
         required_zones:
           - zone_name
-        # Required: Name of ONVIF camera preset to return to when tracking is over.
+        # Required: Name of ONVIF preset in camera's firmware to return to when tracking is over. (default: shown below)
         return_preset: preset_name
         # Optional: Seconds to delay before returning to preset. (default: shown below)
         timeout: 10

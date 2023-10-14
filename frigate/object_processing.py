@@ -29,6 +29,7 @@ from frigate.util.image import (
     calculate_region,
     draw_box_with_label,
     draw_timestamp,
+    is_label_printable,
 )
 
 logger = logging.getLogger(__name__)
@@ -169,7 +170,7 @@ class TrackedObject:
                 self.camera_config.frame_shape,
             ):
                 self.thumbnail_data = {
-                    "frame_time": obj_data["frame_time"],
+                    "frame_time": current_frame_time,
                     "box": obj_data["box"],
                     "area": obj_data["area"],
                     "region": obj_data["region"],
@@ -253,7 +254,6 @@ class TrackedObject:
         return (thumb_update, significant_change, autotracker_update)
 
     def to_dict(self, include_thumbnail: bool = False):
-        (self.thumbnail_data["frame_time"] if self.thumbnail_data is not None else 0.0)
         event = {
             "id": self.obj_data["id"],
             "camera": self.camera,
@@ -510,13 +510,21 @@ class CameraState:
 
                 # draw the bounding boxes on the frame
                 box = obj["box"]
+                text = (
+                    obj["label"]
+                    if (
+                        not obj.get("sub_label")
+                        or not is_label_printable(obj["sub_label"][0])
+                    )
+                    else obj["sub_label"][0]
+                )
                 draw_box_with_label(
                     frame_copy,
                     box[0],
                     box[1],
                     box[2],
                     box[3],
-                    obj["label"],
+                    text,
                     f"{obj['score']:.0%} {int(obj['area'])}",
                     thickness=thickness,
                     color=color,

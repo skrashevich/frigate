@@ -3,22 +3,27 @@
 import asyncio
 import datetime
 import logging
+import multiprocessing as mp
 import os
 import queue
 import random
 import string
-import subprocess as sp
 import threading
 from collections import defaultdict
 from multiprocessing.synchronize import Event as MpEvent
 from pathlib import Path
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 
-import faster_fifo as ff
+import numpy as np
 import psutil
 
 from frigate.config import FrigateConfig, RetainModeEnum
-from frigate.const import CACHE_DIR, MAX_SEGMENT_DURATION, RECORD_DIR
+from frigate.const import (
+    CACHE_DIR,
+    INSERT_MANY_RECORDINGS,
+    MAX_SEGMENT_DURATION,
+    RECORD_DIR,
+)
 from frigate.models import Event, Recordings
 from frigate.types import FeatureMetricsTypes
 from frigate.util.image import area
@@ -27,21 +32,45 @@ from frigate.util.services import get_video_properties
 logger = logging.getLogger(__name__)
 
 
+class SegmentInfo:
+    def __init__(
+        self, motion_box_count: int, active_object_count: int, average_dBFS: int
+    ) -> None:
+        self.motion_box_count = motion_box_count
+        self.active_object_count = active_object_count
+        self.average_dBFS = average_dBFS
+
+    def should_discard_segment(self, retain_mode: RetainModeEnum) -> bool:
+        return (
+            retain_mode == RetainModeEnum.motion
+            and self.motion_box_count == 0
+            and self.average_dBFS == 0
+        ) or (
+            retain_mode == RetainModeEnum.active_objects
+            and self.active_object_count == 0
+        )
+
+
 class RecordingMaintainer(threading.Thread):
     def __init__(
         self,
         config: FrigateConfig,
-        recordings_info_queue: ff.Queue,
+        inter_process_queue: mp.Queue,
+        object_recordings_info_queue: mp.Queue,
+        audio_recordings_info_queue: Optional[mp.Queue],
         process_info: dict[str, FeatureMetricsTypes],
         stop_event: MpEvent,
     ):
         threading.Thread.__init__(self)
         self.name = "recording_maintainer"
         self.config = config
-        self.recordings_info_queue = recordings_info_queue
+        self.inter_process_queue = inter_process_queue
+        self.object_recordings_info_queue = object_recordings_info_queue
+        self.audio_recordings_info_queue = audio_recordings_info_queue
         self.process_info = process_info
         self.stop_event = stop_event
-        self.recordings_info: dict[str, Any] = defaultdict(list)
+        self.object_recordings_info: dict[str, list] = defaultdict(list)
+        self.audio_recordings_info: dict[str, list] = defaultdict(list)
         self.end_time_cache: dict[str, Tuple[datetime.datetime, float]] = {}
 
     async def move_files(self) -> None:
@@ -102,19 +131,31 @@ class RecordingMaintainer(threading.Thread):
                     self.end_time_cache.pop(cache_path, None)
                 grouped_recordings[camera] = grouped_recordings[camera][-keep_count:]
 
+        tasks = []
         for camera, recordings in grouped_recordings.items():
-            # clear out all the recording info for old frames
+            # clear out all the object recording info for old frames
             while (
-                len(self.recordings_info[camera]) > 0
-                and self.recordings_info[camera][0][0]
+                len(self.object_recordings_info[camera]) > 0
+                and self.object_recordings_info[camera][0][0]
                 < recordings[0]["start_time"].timestamp()
             ):
-                self.recordings_info[camera].pop(0)
+                self.object_recordings_info[camera].pop(0)
+
+            # clear out all the audio recording info for old frames
+            while (
+                len(self.audio_recordings_info[camera]) > 0
+                and self.audio_recordings_info[camera][0][0]
+                < recordings[0]["start_time"].timestamp()
+            ):
+                self.audio_recordings_info[camera].pop(0)
 
             # get all events with the end time after the start of the oldest cache file
             # or with end_time None
             events: Event = (
-                Event.select()
+                Event.select(
+                    Event.start_time,
+                    Event.end_time,
+                )
                 .where(
                     Event.camera == camera,
                     (Event.end_time == None)
@@ -124,9 +165,16 @@ class RecordingMaintainer(threading.Thread):
                 .order_by(Event.start_time)
             )
 
-            await asyncio.gather(
-                *(self.validate_and_move_segment(camera, events, r) for r in recordings)
+            tasks.extend(
+                [self.validate_and_move_segment(camera, events, r) for r in recordings]
             )
+
+        recordings_to_insert: list[Optional[Recordings]] = await asyncio.gather(*tasks)
+
+        # fire and forget recordings entries
+        self.inter_process_queue.put(
+            (INSERT_MANY_RECORDINGS, [r for r in recordings_to_insert if r is not None])
+        )
 
     async def validate_and_move_segment(
         self, camera: str, events: Event, recording: dict[str, any]
@@ -146,7 +194,7 @@ class RecordingMaintainer(threading.Thread):
         if cache_path in self.end_time_cache:
             end_time, duration = self.end_time_cache[cache_path]
         else:
-            segment_info = get_video_properties(cache_path, get_duration=True)
+            segment_info = await get_video_properties(cache_path, get_duration=True)
 
             if segment_info["duration"]:
                 duration = float(segment_info["duration"])
@@ -194,7 +242,7 @@ class RecordingMaintainer(threading.Thread):
             if overlaps:
                 record_mode = self.config.cameras[camera].record.events.retain.mode
                 # move from cache to recordings immediately
-                self.store_segment(
+                return await self.move_segment(
                     camera,
                     start_time,
                     end_time,
@@ -206,7 +254,9 @@ class RecordingMaintainer(threading.Thread):
             # if it ends more than the configured pre_capture for the camera
             else:
                 pre_capture = self.config.cameras[camera].record.events.pre_capture
-                most_recently_processed_frame_time = self.recordings_info[camera][-1][0]
+                most_recently_processed_frame_time = self.object_recordings_info[
+                    camera
+                ][-1][0]
                 retain_cutoff = most_recently_processed_frame_time - pre_capture
                 if end_time.timestamp() < retain_cutoff:
                     Path(cache_path).unlink(missing_ok=True)
@@ -214,16 +264,16 @@ class RecordingMaintainer(threading.Thread):
         # else retain days includes this segment
         else:
             record_mode = self.config.cameras[camera].record.retain.mode
-            self.store_segment(
+            return await self.move_segment(
                 camera, start_time, end_time, duration, cache_path, record_mode
             )
 
     def segment_stats(
         self, camera: str, start_time: datetime.datetime, end_time: datetime.datetime
-    ) -> Tuple[int, int]:
+    ) -> SegmentInfo:
         active_count = 0
         motion_count = 0
-        for frame in self.recordings_info[camera]:
+        for frame in self.object_recordings_info[camera]:
             # frame is after end time of segment
             if frame[0] > end_time.timestamp():
                 break
@@ -241,9 +291,23 @@ class RecordingMaintainer(threading.Thread):
 
             motion_count += sum([area(box) for box in frame[2]])
 
-        return (motion_count, active_count)
+        audio_values = []
+        for frame in self.audio_recordings_info[camera]:
+            # frame is after end time of segment
+            if frame[0] > end_time.timestamp():
+                break
 
-    def store_segment(
+            # frame is before start time of segment
+            if frame[0] < start_time.timestamp():
+                continue
+
+            audio_values.append(frame[1])
+
+        average_dBFS = 0 if not audio_values else np.average(audio_values)
+
+        return SegmentInfo(motion_count, active_count, round(average_dBFS))
+
+    async def move_segment(
         self,
         camera: str,
         start_time: datetime.datetime,
@@ -251,13 +315,11 @@ class RecordingMaintainer(threading.Thread):
         duration: float,
         cache_path: str,
         store_mode: RetainModeEnum,
-    ) -> None:
-        motion_count, active_count = self.segment_stats(camera, start_time, end_time)
+    ) -> Optional[Recordings]:
+        segment_info = self.segment_stats(camera, start_time, end_time)
 
         # check if the segment shouldn't be stored
-        if (store_mode == RetainModeEnum.motion and motion_count == 0) or (
-            store_mode == RetainModeEnum.active_objects and active_count == 0
-        ):
+        if segment_info.should_discard_segment(store_mode):
             Path(cache_path).unlink(missing_ok=True)
             self.end_time_cache.pop(cache_path, None)
             return
@@ -281,7 +343,7 @@ class RecordingMaintainer(threading.Thread):
                 start_frame = datetime.datetime.now().timestamp()
 
                 # add faststart to kept segments to improve metadata reading
-                ffmpeg_cmd = [
+                p = await asyncio.create_subprocess_exec(
                     "ffmpeg",
                     "-hide_banner",
                     "-y",
@@ -292,18 +354,14 @@ class RecordingMaintainer(threading.Thread):
                     "-movflags",
                     "+faststart",
                     file_path,
-                ]
-
-                p = sp.run(
-                    ffmpeg_cmd,
-                    encoding="ascii",
-                    capture_output=True,
+                    stderr=asyncio.subprocess.PIPE,
                 )
+                await p.wait()
 
                 if p.returncode != 0:
                     logger.error(f"Unable to convert {cache_path} to {file_path}")
-                    logger.error(p.stderr)
-                    return
+                    logger.error((await p.stderr.read()).decode("ascii"))
+                    return None
                 else:
                     logger.debug(
                         f"Copied {file_path} in {datetime.datetime.now().timestamp()-start_frame} seconds."
@@ -323,18 +381,20 @@ class RecordingMaintainer(threading.Thread):
                 rand_id = "".join(
                     random.choices(string.ascii_lowercase + string.digits, k=6)
                 )
-                Recordings.create(
-                    id=f"{start_time.timestamp()}-{rand_id}",
-                    camera=camera,
-                    path=file_path,
-                    start_time=start_time.timestamp(),
-                    end_time=end_time.timestamp(),
-                    duration=duration,
-                    motion=motion_count,
+
+                return {
+                    Recordings.id: f"{start_time.timestamp()}-{rand_id}",
+                    Recordings.camera: camera,
+                    Recordings.path: file_path,
+                    Recordings.start_time: start_time.timestamp(),
+                    Recordings.end_time: end_time.timestamp(),
+                    Recordings.duration: duration,
+                    Recordings.motion: segment_info.motion_box_count,
                     # TODO: update this to store list of active objects at some point
-                    objects=active_count,
-                    segment_size=segment_size,
-                )
+                    Recordings.objects: segment_info.active_object_count,
+                    Recordings.dBFS: segment_info.average_dBFS,
+                    Recordings.segment_size: segment_size,
+                }
         except Exception as e:
             logger.error(f"Unable to store recording segment {cache_path}")
             Path(cache_path).unlink(missing_ok=True)
@@ -342,14 +402,15 @@ class RecordingMaintainer(threading.Thread):
 
         # clear end_time cache
         self.end_time_cache.pop(cache_path, None)
+        return None
 
     def run(self) -> None:
         # Check for new files every 5 seconds
-        wait_time = 5.0
+        wait_time = 0.0
         while not self.stop_event.wait(wait_time):
             run_start = datetime.datetime.now().timestamp()
 
-            # empty the recordings info queue
+            # empty the object recordings info queue
             while True:
                 try:
                     (
@@ -358,10 +419,10 @@ class RecordingMaintainer(threading.Thread):
                         current_tracked_objects,
                         motion_boxes,
                         regions,
-                    ) = self.recordings_info_queue.get(False)
+                    ) = self.object_recordings_info_queue.get(False)
 
                     if self.process_info[camera]["record_enabled"].value:
-                        self.recordings_info[camera].append(
+                        self.object_recordings_info[camera].append(
                             (
                                 frame_time,
                                 current_tracked_objects,
@@ -371,6 +432,26 @@ class RecordingMaintainer(threading.Thread):
                         )
                 except queue.Empty:
                     break
+
+            # empty the audio recordings info queue if audio is enabled
+            if self.audio_recordings_info_queue:
+                while True:
+                    try:
+                        (
+                            camera,
+                            frame_time,
+                            dBFS,
+                        ) = self.audio_recordings_info_queue.get(False)
+
+                        if self.process_info[camera]["record_enabled"].value:
+                            self.audio_recordings_info[camera].append(
+                                (
+                                    frame_time,
+                                    dBFS,
+                                )
+                            )
+                    except queue.Empty:
+                        break
 
             try:
                 asyncio.run(self.move_files())
