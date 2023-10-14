@@ -165,6 +165,8 @@ class FrigateApp:
                 ),
                 "capture_process": None,
                 "process": None,
+                "audio_rms": mp.Value("d", 0.0),  # type: ignore[typeddict-item]
+                "audio_dBFS": mp.Value("d", 0.0),  # type: ignore[typeddict-item]
             }
             self.ptz_metrics[camera_name] = {
                 "ptz_autotracker_enabled": mp.Value(  # type: ignore[typeddict-item]
@@ -509,6 +511,7 @@ class FrigateApp:
                 args=(
                     self.config,
                     self.audio_recordings_info_queue,
+                    self.camera_metrics,
                     self.feature_metrics,
                     self.inter_process_communicator,
                 ),
