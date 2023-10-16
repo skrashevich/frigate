@@ -102,7 +102,7 @@ export default function System() {
               className="text-blue-500 hover:underline"
               target="_blank"
               rel="noopener noreferrer"
-              href="/live/webrtc/"
+              href="./live/webrtc/"
             >
               dashboard
             </Link>
