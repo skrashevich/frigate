@@ -11,7 +11,7 @@ import SnapshotIcon from '../icons/Snapshot';
 import { useAudioState, useDetectState, useRecordingsState, useSnapshotsState } from '../api/ws';
 import { useMemo, useState } from 'preact/hooks';
 import useSWR from 'swr';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { useResizeObserver } from '../hooks';
 import Dialog from '../components/Dialog';
 import Switch from '../components/Switch';
