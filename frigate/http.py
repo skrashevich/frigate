@@ -278,7 +278,7 @@ def send_to_plus(id):
     except Exception as ex:
         logger.exception(ex)
         return make_response(
-            jsonify({"success": False, "message": str(ex)}),
+            jsonify({"success": False, "message": "Error uploading image"}),
             400,
         )
 
@@ -298,7 +298,7 @@ def send_to_plus(id):
         except Exception as ex:
             logger.exception(ex)
             return make_response(
-                jsonify({"success": False, "message": str(ex)}),
+                jsonify({"success": False, "message": "Error uploading annotation"}),
                 400,
             )
 
@@ -369,7 +369,7 @@ def false_positive(id):
     except Exception as ex:
         logger.exception(ex)
         return make_response(
-            jsonify({"success": False, "message": str(ex)}),
+            jsonify({"success": False, "message": "Error uploading false positive"}),
             400,
         )
 
@@ -472,8 +472,9 @@ def get_labels():
         else:
             events = Event.select(Event.label).distinct()
     except Exception as e:
+        logger.error(e)
         return make_response(
-            jsonify({"success": False, "message": f"Failed to get labels: {e}"}), 404
+            jsonify({"success": False, "message": "Failed to get labels"}), 404
         )
 
     labels = sorted([e.label for e in events])
@@ -486,9 +487,9 @@ def get_sub_labels():
 
     try:
         events = Event.select(Event.sub_label).distinct()
-    except Exception as e:
+    except Exception:
         return make_response(
-            jsonify({"success": False, "message": f"Failed to get sub_labels: {e}"}),
+            jsonify({"success": False, "message": "Failed to get sub_labels"}),
             404,
         )
 
@@ -666,7 +667,7 @@ def event_snapshot(id):
             )
         # read snapshot from disk
         with open(
-            os.path.join(CLIPS_DIR, f"{event.camera}-{id}.jpg"), "rb"
+            os.path.join(CLIPS_DIR, f"{event.camera}-{event.id}.jpg"), "rb"
         ) as image_file:
             jpg_bytes = image_file.read()
     except DoesNotExist:
@@ -816,7 +817,7 @@ def event_clip(id):
             jsonify({"success": False, "message": "Clip not available"}), 404
         )
 
-    file_name = f"{event.camera}-{id}.mp4"
+    file_name = f"{event.camera}-{event.id}.mp4"
     clip_path = os.path.join(CLIPS_DIR, file_name)
 
     if not os.path.isfile(clip_path):
@@ -1032,9 +1033,10 @@ def events():
         .order_by(Event.start_time.desc())
         .limit(limit)
         .dicts()
+        .iterator()
     )
 
-    return jsonify([e for e in events])
+    return jsonify(list(events))
 
 
 @bp.route("/events/<camera_name>/<label>/create", methods=["POST"])
@@ -1069,8 +1071,9 @@ def create_event(camera_name, label):
             frame,
         )
     except Exception as e:
+        logger.error(e)
         return make_response(
-            jsonify({"success": False, "message": f"An unknown error occurred: {e}"}),
+            jsonify({"success": False, "message": "An unknown error occurred"}),
             500,
         )
 
@@ -1263,11 +1266,12 @@ def config_set():
             with open(config_file, "w") as f:
                 f.write(old_raw_config)
                 f.close()
+            logger.error(f"\nConfig Error:\n\n{str(traceback.format_exc())}")
             return make_response(
                 jsonify(
                     {
                         "success": False,
-                        "message": f"\nConfig Error:\n\n{str(traceback.format_exc())}",
+                        "message": "Error parsing config. Check logs for error message.",
                     }
                 ),
                 400,
@@ -1476,7 +1480,10 @@ def latest_frame(camera_name):
 @bp.route("/<camera_name>/recordings/<frame_time>/snapshot.png")
 def get_snapshot_from_recording(camera_name: str, frame_time: str):
     if camera_name not in current_app.frigate_config.cameras:
-        return "Camera named {} not found".format(camera_name), 404
+        return make_response(
+            jsonify({"success": False, "message": "Camera not found"}),
+            404,
+        )
 
     frame_time = float(frame_time)
     recording_query = (
@@ -1594,6 +1601,7 @@ def recordings_summary(camera_name):
                 ),
             ).desc()
         )
+        .namedtuples()
     )
 
     event_groups = (
@@ -1615,14 +1623,14 @@ def recordings_summary(camera_name):
                 ),
             ),
         )
-        .objects()
+        .namedtuples()
     )
 
     event_map = {g.hour: g.count for g in event_groups}
 
     days = {}
 
-    for recording_group in recording_groups.objects():
+    for recording_group in recording_groups:
         parts = recording_group.hour.split()
         hour = parts[1]
         day = parts[0]
@@ -1666,9 +1674,11 @@ def recordings(camera_name):
             Recordings.start_time <= before,
         )
         .order_by(Recordings.start_time)
+        .dicts()
+        .iterator()
     )
 
-    return jsonify([e for e in recordings.dicts()])
+    return jsonify(list(recordings))
 
 
 @bp.route("/<camera_name>/start/<int:start_ts>/end/<int:end_ts>/clip.mp4")
@@ -1702,7 +1712,7 @@ def recording_clip(camera_name, start_ts, end_ts):
         if clip.end_time > end_ts:
             playlist_lines.append(f"outpoint {int(end_ts - clip.start_time)}")
 
-    file_name = f"clip_{camera_name}_{start_ts}-{end_ts}.mp4"
+    file_name = secure_filename(f"clip_{camera_name}_{start_ts}-{end_ts}.mp4")
     path = os.path.join(CACHE_DIR, file_name)
 
     if not os.path.exists(path):
@@ -1773,6 +1783,7 @@ def vod_ts(camera_name, start_ts, end_ts):
         )
         .where(Recordings.camera == camera_name)
         .order_by(Recordings.start_time.asc())
+        .iterator()
     )
 
     clips = []
@@ -1870,7 +1881,7 @@ def vod_event(id):
             404,
         )
 
-    clip_path = os.path.join(CLIPS_DIR, f"{event.camera}-{id}.mp4")
+    clip_path = os.path.join(CLIPS_DIR, f"{event.camera}-{event.id}.mp4")
 
     if not os.path.isfile(clip_path):
         end_ts = (
@@ -2089,7 +2100,8 @@ def logs(service: str):
         file.close()
         return contents, 200
     except FileNotFoundError as e:
+        logger.error(e)
         return make_response(
-            jsonify({"success": False, "message": f"Could not find log file: {e}"}),
+            jsonify({"success": False, "message": "Could not find log file"}),
             500,
         )
