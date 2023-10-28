@@ -7,10 +7,8 @@ import signal
 import subprocess as sp
 import threading
 import time
-from collections import defaultdict
 
 import cv2
-import numpy as np
 from setproctitle import setproctitle
 
 from frigate.config import CameraConfig, DetectConfig, ModelConfig
@@ -24,6 +22,7 @@ from frigate.log import LogPipe
 from frigate.motion import MotionDetector
 from frigate.motion.improved_motion import ImprovedMotionDetector
 from frigate.object_detection import RemoteObjectDetector
+from frigate.ptz.autotrack import ptz_moving_at_frame_time
 from frigate.track import ObjectTracker
 from frigate.track.norfair_tracker import NorfairTracker
 from frigate.types import PTZMetricsTypes
@@ -39,12 +38,12 @@ from frigate.util.object import (
     get_cluster_candidates,
     get_cluster_region,
     get_cluster_region_from_grid,
-    get_consolidated_object_detections,
     get_min_region_size,
     get_startup_regions,
     inside_any,
     intersects_any,
     is_object_filtered,
+    reduce_detections,
 )
 from frigate.util.services import listen
 
@@ -616,19 +615,25 @@ def process_frames(
                 for obj in object_tracker.tracked_objects.values()
                 if obj["id"] not in stationary_object_ids
             ]
+            object_boxes = tracked_object_boxes + object_tracker.untracked_object_boxes
 
             # get consolidated regions for tracked objects
             regions = [
                 get_cluster_region(
-                    frame_shape, region_min_size, candidate, tracked_object_boxes
+                    frame_shape, region_min_size, candidate, object_boxes
                 )
                 for candidate in get_cluster_candidates(
-                    frame_shape, region_min_size, tracked_object_boxes
+                    frame_shape, region_min_size, object_boxes
                 )
             ]
 
-            # only add in the motion boxes when not calibrating
-            if not motion_detector.is_calibrating():
+            # only add in the motion boxes when not calibrating and a ptz is not moving via autotracking
+            # ptz_moving_at_frame_time() always returns False for non-autotracking cameras
+            if not motion_detector.is_calibrating() and not ptz_moving_at_frame_time(
+                frame_time,
+                ptz_metrics["ptz_start_time"].value,
+                ptz_metrics["ptz_stop_time"].value,
+            ):
                 # find motion boxes that are not inside tracked object regions
                 standalone_motion_boxes = [
                     b for b in motion_boxes if not inside_any(b, regions)
@@ -688,50 +693,10 @@ def process_frames(
                     )
                 )
 
-            #########
-            # merge objects
-            #########
-            # group by name
-            detected_object_groups = defaultdict(lambda: [])
-            for detection in detections:
-                detected_object_groups[detection[0]].append(detection)
-
-            selected_objects = []
-            for group in detected_object_groups.values():
-                # apply non-maxima suppression to suppress weak, overlapping bounding boxes
-                # o[2] is the box of the object: xmin, ymin, xmax, ymax
-                # apply max/min to ensure values do not exceed the known frame size
-                boxes = [
-                    (
-                        o[2][0],
-                        o[2][1],
-                        o[2][2] - o[2][0],
-                        o[2][3] - o[2][1],
-                    )
-                    for o in group
-                ]
-                confidences = [o[1] for o in group]
-                idxs = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
-
-                # add objects
-                for index in idxs:
-                    index = index if isinstance(index, np.int32) else index[0]
-                    obj = group[index]
-                    selected_objects.append(obj)
-
-            # set the detections list to only include top objects
-            detections = selected_objects
+            consolidated_detections = reduce_detections(frame_shape, detections)
 
             # if detection was run on this frame, consolidate
             if len(regions) > 0:
-                # group by name
-                detected_object_groups = defaultdict(lambda: [])
-                for detection in detections:
-                    detected_object_groups[detection[0]].append(detection)
-
-                consolidated_detections = get_consolidated_object_detections(
-                    detected_object_groups
-                )
                 tracked_detections = [
                     d
                     for d in consolidated_detections

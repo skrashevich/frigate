@@ -207,14 +207,10 @@ class AudioEventMaintainer(threading.Thread):
 
         # only run audio detection when volume is above min_volume
         if rms >= self.config.audio.min_volume:
-            # add audio info to recordings queue
-            self.recordings_info_queue.put(
-                (self.config.name, datetime.datetime.now().timestamp(), dBFS)
-            )
-
             # create waveform relative to max range and look for detections
             waveform = (audio / AUDIO_MAX_BIT_RANGE).astype(np.float32)
             model_detections = self.detector.detect(waveform)
+            audio_detections = []
 
             for label, score, _ in model_detections:
                 logger.debug(f"Heard {label} with a score of {score}")
@@ -227,6 +223,17 @@ class AudioEventMaintainer(threading.Thread):
                     "threshold", AUDIO_MIN_CONFIDENCE
                 ):
                     self.handle_detection(label, score)
+                    audio_detections.append(label)
+
+            # add audio info to recordings queue
+            self.recordings_info_queue.put(
+                (
+                    self.config.name,
+                    datetime.datetime.now().timestamp(),
+                    dBFS,
+                    audio_detections,
+                )
+            )
 
         self.expire_detections()
 

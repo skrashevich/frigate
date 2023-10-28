@@ -188,8 +188,8 @@ class PtzAutotrackConfig(FrigateBaseModel):
         else:
             raise ValueError("Invalid type for movement_weights")
 
-        if len(weights) != 3:
-            raise ValueError("movement_weights must have exactly 3 floats")
+        if len(weights) != 5:
+            raise ValueError("movement_weights must have exactly 5 floats")
 
         return weights
 
@@ -500,6 +500,14 @@ class BirdseyeModeEnum(str, Enum):
     objects = "objects"
     motion = "motion"
     continuous = "continuous"
+
+    @classmethod
+    def get_index(cls, type):
+        return list(cls).index(type)
+
+    @classmethod
+    def get(cls, index):
+        return list(cls)[index]
 
 
 class BirdseyeConfig(FrigateBaseModel):

@@ -1,3 +1,4 @@
+import argparse
 import datetime
 import logging
 import multiprocessing as mp
@@ -19,7 +20,7 @@ from frigate.comms.dispatcher import Communicator, Dispatcher
 from frigate.comms.inter_process import InterProcessCommunicator
 from frigate.comms.mqtt import MqttClient
 from frigate.comms.ws import WebSocketClient
-from frigate.config import FrigateConfig
+from frigate.config import BirdseyeModeEnum, FrigateConfig
 from frigate.const import (
     CACHE_DIR,
     CLIPS_DIR,
@@ -168,6 +169,20 @@ class FrigateApp:
                 "process": None,
                 "audio_rms": mp.Value("d", 0.0),  # type: ignore[typeddict-item]
                 "audio_dBFS": mp.Value("d", 0.0),  # type: ignore[typeddict-item]
+                "birdseye_enabled": mp.Value(  # type: ignore[typeddict-item]
+                    # issue https://github.com/python/typeshed/issues/8799
+                    # from mypy 0.981 onwards
+                    "i",
+                    self.config.cameras[camera_name].birdseye.enabled,
+                ),
+                "birdseye_mode": mp.Value(  # type: ignore[typeddict-item]
+                    # issue https://github.com/python/typeshed/issues/8799
+                    # from mypy 0.981 onwards
+                    "i",
+                    BirdseyeModeEnum.get_index(
+                        self.config.cameras[camera_name].birdseye.mode.value
+                    ),
+                ),
             }
             self.ptz_metrics[camera_name] = {
                 "ptz_autotracker_enabled": mp.Value(  # type: ignore[typeddict-item]
@@ -188,6 +203,12 @@ class FrigateApp:
                 # issue https://github.com/python/typeshed/issues/8799
                 # from mypy 0.981 onwards
                 "ptz_zoom_level": mp.Value("d", 0.0),  # type: ignore[typeddict-item]
+                # issue https://github.com/python/typeshed/issues/8799
+                # from mypy 0.981 onwards
+                "ptz_max_zoom": mp.Value("d", 0.0),  # type: ignore[typeddict-item]
+                # issue https://github.com/python/typeshed/issues/8799
+                # from mypy 0.981 onwards
+                "ptz_min_zoom": mp.Value("d", 0.0),  # type: ignore[typeddict-item]
                 # issue https://github.com/python/typeshed/issues/8799
                 # from mypy 0.981 onwards
             }
@@ -455,6 +476,7 @@ class FrigateApp:
             args=(
                 self.config,
                 self.video_output_queue,
+                self.camera_metrics,
             ),
         )
         output_processor.daemon = True
@@ -594,6 +616,13 @@ class FrigateApp:
             )
 
     def start(self) -> None:
+        parser = argparse.ArgumentParser(
+            prog="Frigate",
+            description="An NVR with realtime local object detection for IP cameras.",
+        )
+        parser.add_argument("--validate-config", action="store_true")
+        args = parser.parse_args()
+
         self.init_logger()
         logger.info(f"Starting Frigate ({VERSION})")
         try:
@@ -617,6 +646,12 @@ class FrigateApp:
                 print("*************************************************************")
                 self.log_process.terminate()
                 sys.exit(1)
+            if args.validate_config:
+                print("*************************************************************")
+                print("*** Your config file is valid.                            ***")
+                print("*************************************************************")
+                self.log_process.terminate()
+                sys.exit(0)
             self.set_environment_vars()
             self.set_log_levels()
             self.init_queues()
