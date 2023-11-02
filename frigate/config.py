@@ -171,7 +171,7 @@ class PtzAutotrackConfig(FrigateBaseModel):
     timeout: int = Field(
         default=10, title="Seconds to delay before returning to preset."
     )
-    movement_weights: Optional[Union[float, List[float]]] = Field(
+    movement_weights: Optional[Union[str, List[str]]] = Field(
         default=[],
         title="Internal value used for PTZ movements based on the speed of your camera's motor.",
     )
@@ -730,6 +730,9 @@ class CameraConfig(FrigateBaseModel):
     best_image_timeout: int = Field(
         default=60,
         title="How long to wait for the image with the highest confidence score.",
+    )
+    webui_url: Optional[str] = Field(
+        title="URL to visit the camera directly from system page",
     )
     zones: Dict[str, ZoneConfig] = Field(
         default_factory=dict, title="Zone configuration."
