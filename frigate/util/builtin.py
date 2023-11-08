@@ -8,6 +8,7 @@ import shlex
 import urllib.parse
 from collections import Counter
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any, Tuple
 
 import numpy as np
@@ -156,7 +157,7 @@ def load_labels(path, encoding="utf-8", prefill=91):
         return labels
 
 
-def get_tz_modifiers(tz_name: str) -> Tuple[str, str]:
+def get_tz_modifiers(tz_name: str) -> Tuple[str, str, int]:
     seconds_offset = (
         datetime.datetime.now(pytz.timezone(tz_name)).utcoffset().total_seconds()
     )
@@ -164,7 +165,7 @@ def get_tz_modifiers(tz_name: str) -> Tuple[str, str]:
     minutes_offset = int(seconds_offset / 60 - hours_offset * 60)
     hour_modifier = f"{hours_offset} hour"
     minute_modifier = f"{minutes_offset} minute"
-    return hour_modifier, minute_modifier
+    return hour_modifier, minute_modifier, seconds_offset
 
 
 def to_relative_box(
@@ -269,3 +270,15 @@ def get_tomorrow_at_time(hour: int) -> datetime.datetime:
     return tomorrow.replace(hour=hour, minute=0, second=0).astimezone(
         datetime.timezone.utc
     )
+
+
+def clear_and_unlink(file: Path, missing_ok: bool = True) -> None:
+    """clear file then unlink to avoid space retained by file descriptors."""
+    if not missing_ok and not file.exists():
+        raise FileNotFoundError()
+
+    # empty contents of file before unlinking https://github.com/blakeblackshear/frigate/issues/4769
+    with open(file, "w"):
+        pass
+
+    file.unlink(missing_ok=missing_ok)
