@@ -222,9 +222,9 @@ ffmpeg:
 # Optional: Detect configuration
 # NOTE: Can be overridden at the camera level
 detect:
-  # Optional: width of the frame for the input with the detect role (default: shown below)
+  # Optional: width of the frame for the input with the detect role (default: use native stream resolution)
   width: 1280
-  # Optional: height of the frame for the input with the detect role (default: shown below)
+  # Optional: height of the frame for the input with the detect role (default: use native stream resolution)
   height: 720
   # Optional: desired fps for your camera for the input with the detect role (default: shown below)
   # NOTE: Recommended value of 5. Ideally, try and reduce your FPS on the camera.
@@ -438,7 +438,7 @@ rtmp:
   enabled: False
 
 # Optional: Restream configuration
-# Uses https://github.com/AlexxIT/go2rtc (v1.8.1)
+# Uses https://github.com/AlexxIT/go2rtc (v1.8.2)
 go2rtc:
 
 # Optional: jsmpeg stream configuration for WebUI
