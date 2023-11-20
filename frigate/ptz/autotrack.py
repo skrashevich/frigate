@@ -208,7 +208,10 @@ class PtzAutoTracker:
                 continue
 
             self.autotracker_init[camera] = False
-            if camera_config.onvif.autotracking.enabled:
+            if (
+                camera_config.onvif.autotracking.enabled
+                and camera_config.onvif.autotracking.enabled_in_config
+            ):
                 self._autotracker_setup(camera_config, camera)
 
     def _autotracker_setup(self, camera_config, camera):
@@ -586,7 +589,10 @@ class PtzAutoTracker:
         camera_config.frame_shape[0]
 
         while not self.stop_event.is_set():
-            move_data = self.move_queues[camera].get()
+            try:
+                move_data = self.move_queues[camera].get(True, 0.1)
+            except queue.Empty:
+                continue
 
             with self.move_queue_locks[camera]:
                 frame_time, pan, tilt, zoom = move_data

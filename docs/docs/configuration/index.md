@@ -25,22 +25,9 @@ cameras:
 
 VSCode (and VSCode addon) supports the JSON schemas which will automatically validate the config. This can be added by adding `# yaml-language-server: $schema=http://frigate_host:5000/api/config/schema.json` to the top of the config file. `frigate_host` being the IP address of Frigate or `ccab4aaf-frigate` if running in the addon.
 
-### Full configuration reference:
+### Environment Variable Substitution
 
-:::caution
-
-It is not recommended to copy this full configuration file. Only specify values that are different from the defaults. Configuration options and default values may change in future versions.
-
-:::
-
-**Note:** The following values will be replaced at runtime by using environment variables
-
-- `{FRIGATE_MQTT_USER}`
-- `{FRIGATE_MQTT_PASSWORD}`
-- `{FRIGATE_RTSP_USER}`
-- `{FRIGATE_RTSP_PASSWORD}`
-
-for example:
+Frigate supports the use of environment variables starting with `FRIGATE_` **only** where specifically indicated in the configuration reference below. For example, the following values can be replaced at runtime by using environment variables:
 
 ```yaml
 mqtt:
@@ -59,6 +46,14 @@ onvif:
   user: "{FRIGATE_RTSP_USER}"
   password: "{FRIGATE_RTSP_PASSWORD}"
 ```
+
+### Full configuration reference:
+
+:::caution
+
+It is not recommended to copy this full configuration file. Only specify values that are different from the defaults. Configuration options and default values may change in future versions.
+
+:::
 
 ```yaml
 mqtt:
@@ -350,8 +345,8 @@ record:
   # Optional: Number of minutes to wait between cleanup runs (default: shown below)
   # This can be used to reduce the frequency of deleting recording segments from disk if you want to minimize i/o
   expire_interval: 60
-  # Optional: Sync recordings with disk on startup (default: shown below).
-  sync_on_startup: False
+  # Optional: Sync recordings with disk on startup and once a day (default: shown below).
+  sync_recordings: False
   # Optional: Retention settings for recording
   retain:
     # Optional: Number of days to retain recordings regardless of events (default: shown below)
@@ -438,7 +433,7 @@ rtmp:
   enabled: False
 
 # Optional: Restream configuration
-# Uses https://github.com/AlexxIT/go2rtc (v1.8.2)
+# Uses https://github.com/AlexxIT/go2rtc (v1.8.3)
 go2rtc:
 
 # Optional: jsmpeg stream configuration for WebUI

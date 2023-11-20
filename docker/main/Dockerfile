@@ -34,7 +34,7 @@ RUN --mount=type=tmpfs,target=/tmp --mount=type=tmpfs,target=/var/cache/apt \
 FROM scratch AS go2rtc
 ARG TARGETARCH
 WORKDIR /rootfs/usr/local/go2rtc/bin
-ADD --link --chmod=755 "https://github.com/AlexxIT/go2rtc/releases/download/v1.8.2/go2rtc_linux_${TARGETARCH}" go2rtc
+ADD --link --chmod=755 "https://github.com/AlexxIT/go2rtc/releases/download/v1.8.3/go2rtc_linux_${TARGETARCH}" go2rtc
 
 FROM --platform=$BUILDPLATFORM node:16 AS docs-build
 ADD ./docs /docs
@@ -223,13 +223,13 @@ COPY docker/main/fake_frigate_run /etc/s6-overlay/s6-rc.d/frigate/run
 RUN mkdir -p /opt/frigate \
     && ln -svf /workspace/frigate/frigate /opt/frigate/frigate
 
-# Install Node 16
-RUN apt-get update \
-    && apt-get install wget -y \
-    && wget -qO- https://deb.nodesource.com/setup_16.x | bash - \
-    && apt-get install -y nodejs \
+# Install Node 20
+RUN curl -SLO https://deb.nodesource.com/nsolid_setup_deb.sh && \
+    chmod 500 nsolid_setup_deb.sh && \
+    ./nsolid_setup_deb.sh 20 && \
+    apt-get install nodejs -y \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g npm@9
+    && npm install -g npm@10
 
 WORKDIR /workspace/frigate
 

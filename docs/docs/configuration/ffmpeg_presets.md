@@ -14,6 +14,7 @@ See [the hwaccel docs](/configuration/hardware_acceleration.md) for more info on
 | Preset                | Usage                          | Other Notes                                           |
 | --------------------- | ------------------------------ | ----------------------------------------------------- |
 | preset-rpi-64-h264    | 64 bit Rpi with h264 stream    |                                                       |
+| preset-rpi-64-h265    | 64 bit Rpi with h265 stream    |                                                       |
 | preset-vaapi          | Intel & AMD VAAPI              | Check hwaccel docs to ensure correct driver is chosen |
 | preset-intel-qsv-h264 | Intel QSV with h264 stream     | If issues occur recommend using vaapi preset instead  |
 | preset-intel-qsv-h265 | Intel QSV with h265 stream     | If issues occur recommend using vaapi preset instead  |
@@ -22,6 +23,8 @@ See [the hwaccel docs](/configuration/hardware_acceleration.md) for more info on
 | preset-nvidia-mjpeg   | Nvidia GPU with mjpeg stream   | Recommend restreaming mjpeg and using nvidia-h264     |
 | preset-jetson-h264    | Nvidia Jetson with h264 stream |                                                       |
 | preset-jetson-h265    | Nvidia Jetson with h265 stream |                                                       |
+| preset-rk-h264        | Rockchip MPP with h264 stream  | Use image with *-rk suffix and privileged mode        |
+| preset-rk-h265        | Rockchip MPP with h265 stream  | Use image with *-rk suffix and privileged mode        |
 
 ### Input Args Presets
 

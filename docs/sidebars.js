@@ -5,6 +5,7 @@ module.exports = {
       "frigate/hardware",
       "frigate/installation",
       "frigate/camera_setup",
+      "frigate/video_pipeline",
     ],
     Guides: [
       "guides/getting_started",

@@ -19,6 +19,7 @@ from frigate.const import (
     CACHE_DIR,
     CACHE_SEGMENT_FORMAT,
     DEFAULT_DB_PATH,
+    MAX_PRE_CAPTURE,
     REGEX_CAMERA_NAME,
     YAML_EXT,
 )
@@ -184,6 +185,9 @@ class PtzAutotrackConfig(FrigateBaseModel):
         default=[],
         title="Internal value used for PTZ movements based on the speed of your camera's motor.",
     )
+    enabled_in_config: Optional[bool] = Field(
+        title="Keep track of original state of autotracking."
+    )
 
     @validator("movement_weights", pre=True)
     def validate_weights(cls, v):
@@ -229,7 +233,9 @@ class RetainConfig(FrigateBaseModel):
 
 
 class EventsConfig(FrigateBaseModel):
-    pre_capture: int = Field(default=5, title="Seconds to retain before event starts.")
+    pre_capture: int = Field(
+        default=5, title="Seconds to retain before event starts.", le=MAX_PRE_CAPTURE
+    )
     post_capture: int = Field(default=5, title="Seconds to retain after event ends.")
     required_zones: List[str] = Field(
         default_factory=list,
@@ -256,8 +262,8 @@ class RecordExportConfig(FrigateBaseModel):
 
 class RecordConfig(FrigateBaseModel):
     enabled: bool = Field(default=False, title="Enable record on all cameras.")
-    sync_on_startup: bool = Field(
-        default=False, title="Sync recordings with disk on startup."
+    sync_recordings: bool = Field(
+        default=False, title="Sync recordings with disk on startup and once a day."
     )
     expire_interval: int = Field(
         default=60,
@@ -1191,6 +1197,9 @@ class FrigateConfig(FrigateBaseModel):
             # set config pre-value
             camera_config.record.enabled_in_config = camera_config.record.enabled
             camera_config.audio.enabled_in_config = camera_config.audio.enabled
+            camera_config.onvif.autotracking.enabled_in_config = (
+                camera_config.onvif.autotracking.enabled
+            )
 
             # Add default filters
             object_keys = camera_config.objects.track

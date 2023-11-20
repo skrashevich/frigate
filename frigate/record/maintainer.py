@@ -23,6 +23,7 @@ from frigate.const import (
     CACHE_SEGMENT_FORMAT,
     INSERT_MANY_RECORDINGS,
     MAX_SEGMENT_DURATION,
+    MAX_SEGMENTS_IN_CACHE,
     RECORD_DIR,
 )
 from frigate.models import Event, Recordings, RecordingsToEvents
@@ -121,8 +122,8 @@ class RecordingMaintainer(threading.Thread):
                 }
             )
 
-        # delete all cached files past the most recent 5
-        keep_count = 5
+        # delete all cached files past the most recent MAX_SEGMENTS_IN_CACHE
+        keep_count = MAX_SEGMENTS_IN_CACHE
         for camera in grouped_recordings.keys():
             # sort based on start time
             grouped_recordings[camera] = sorted(
@@ -232,12 +233,8 @@ class RecordingMaintainer(threading.Thread):
 
         # if cached file's start_time is earlier than the retain days for the camera
         if start_time <= (
-            (
-                datetime.datetime.now().astimezone(datetime.timezone.utc)
-                - datetime.timedelta(
-                    days=self.config.cameras[camera].record.retain.days
-                )
-            )
+            datetime.datetime.now().astimezone(datetime.timezone.utc)
+            - datetime.timedelta(days=self.config.cameras[camera].record.retain.days)
         ):
             # if the cached segment overlaps with the events:
             overlaps = False
