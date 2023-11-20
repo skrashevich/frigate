@@ -36,7 +36,7 @@ ARG TARGETARCH
 WORKDIR /rootfs/usr/local/go2rtc/bin
 ADD --link --chmod=755 "https://github.com/AlexxIT/go2rtc/releases/download/v1.8.3/go2rtc_linux_${TARGETARCH}" go2rtc
 
-FROM --platform=$BUILDPLATFORM node:16 AS docs-build
+FROM --platform=$BUILDPLATFORM node:18 AS docs-build
 ADD ./docs /docs
 ADD labelmap.txt /
 WORKDIR /docs
@@ -245,7 +245,7 @@ CMD ["sleep", "infinity"]
 
 # Frigate web build
 # This should be architecture agnostic, so speed up the build on multiarch by not using QEMU.
-FROM --platform=$BUILDPLATFORM node:16 AS web-build
+FROM --platform=$BUILDPLATFORM node:18 AS web-build
 
 WORKDIR /work
 COPY web/package.json web/package-lock.json ./
