@@ -1844,7 +1844,7 @@ def recording_clip(camera_name, start_ts, end_ts):
                 jsonify(
                     {
                         "success": False,
-                        "message": f"Could not create clip for event {event.id} from recordings for {event.camera_name}.",
+                        "message": f"Could not create clip {file_name} from recordings for {camera_name}.",
                     }
                 ),
                 500,
