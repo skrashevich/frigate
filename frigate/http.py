@@ -1421,22 +1421,6 @@ def config_schema():
     )
 
 
-@bp.route("/go2rtc/streams")
-def go2rtc_streams():
-    r = requests.get("http://127.0.0.1:1984/api/streams")
-    if not r.ok:
-        logger.error("Failed to fetch streams from go2rtc")
-        return make_response(
-            jsonify({"success": False, "message": "Error fetching stream data"}),
-            500,
-        )
-    stream_data = r.json()
-    for data in stream_data.values():
-        for producer in data["producers"]:
-            producer["url"] = clean_camera_user_pass(producer["url"])
-    return jsonify(stream_data)
-
-
 @bp.route("/version")
 def version():
     return VERSION
