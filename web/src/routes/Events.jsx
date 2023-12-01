@@ -124,12 +124,21 @@ export default function Events({ path, ...props }) {
     [searchParams]
   );
 
-  const { data: ongoingEvents, mutate: refreshOngoingEvents } = useSWR(['events', { in_progress: 1, include_thumbnails: 0 }]);
-  const { data: eventPages, mutate: refreshEvents, size, setSize, isValidating } = useSWRInfinite(getKey, eventsFetcher);
+  const { data: ongoingEvents, mutate: refreshOngoingEvents } = useSWR([
+    'events',
+    { in_progress: 1, include_thumbnails: 0 },
+  ]);
+  const {
+    data: eventPages,
+    mutate: refreshEvents,
+    size,
+    setSize,
+    isValidating,
+  } = useSWRInfinite(getKey, eventsFetcher);
   const mutate = () => {
     refreshEvents();
     refreshOngoingEvents();
-  }
+  };
 
   const { data: allLabels } = useSWR(['labels']);
   const { data: allSubLabels } = useSWR(['sub_labels', { split_joined: 1 }]);
@@ -293,15 +302,12 @@ export default function Events({ path, ...props }) {
     [path, searchParams, setSearchParams]
   );
 
-  const onClickFilterSubmitted = useCallback(
-    () => {
-      if( ++searchParams.is_submitted > 1 ) {
-        searchParams.is_submitted = -1;
-      }
-      onFilter('is_submitted', searchParams.is_submitted);
-    },
-    [searchParams, onFilter]
-  );
+  const onClickFilterSubmitted = useCallback(() => {
+    if (++searchParams.is_submitted > 1) {
+      searchParams.is_submitted = -1;
+    }
+    onFilter('is_submitted', searchParams.is_submitted);
+  }, [searchParams, onFilter]);
 
   const isDone = (eventPages?.[eventPages.length - 1]?.length ?? 0) < API_LIMIT;
 
@@ -928,7 +934,7 @@ function Event({
                     className="flex-grow-0"
                     src={
                       event.has_snapshot
-                        ? `${apiHost}api/events/${event.id}/snapshot.jpg`
+                        ? `${apiHost}api/events/${event.id}/snapshot.jpg?bbox=1`
                         : `${apiHost}api/events/${event.id}/thumbnail.jpg`
                     }
                     alt={`${event.label} at ${((event?.data?.top_score || event.top_score) * 100).toFixed(
