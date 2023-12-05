@@ -1,0 +1,15 @@
+{
+  "name": "frigate",
+  "version": "0.13",
+  "description": "NVR With Realtime Object Detection for IP Cameras",
+  "directories": {
+    "doc": "docs",
+    "test": "test"
+  },
+  "scripts": {},
+  "keywords": [],
+  "devDependencies": {
+    "@playwright/test": "^1.40.1",
+    "@types/node": "^18"
+  }
+}

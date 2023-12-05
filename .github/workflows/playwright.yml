@@ -1,0 +1,58 @@
+name: Playwright Tests
+on:
+  push:
+    branches: [ main, master, dev, playwright ]
+  pull_request:
+    branches: [ main, master, dev ]
+  workflow_dispatch:
+jobs:
+  amd64_build:
+    runs-on: ubuntu-latest
+    name: AMD64 Build
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up QEMU and Buildx
+        id: setup
+        uses: ./.github/actions/setup
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build amd64 standard build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/main/Dockerfile
+          push: false
+          load: true
+          platforms: linux/amd64
+          target: frigate
+          tags: frigate:amd64
+          cache-from: type=registry,ref=${{ steps.setup.outputs.cache-name }}-amd64
+          cache-to: type=registry,ref=${{ steps.setup.outputs.cache-name }}-amd64,mode=max
+      - name: Run container
+        run: | 
+          docker run -d \
+          --name frigate \
+          --restart=unless-stopped \
+          --mount type=tmpfs,target=/tmp/cache,tmpfs-size=1000000000 \
+          --shm-size=64m \
+          -p 5000:5000 \
+          frigate:amd64
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - name: Install dependencies
+        working-directory: ./frigate/test/playwright
+        run: npm ci
+      - name: Install Playwright Browsers
+        working-directory: ./frigate/test/playwright
+        run: npx playwright install --with-deps
+      - name: Run Playwright tests
+        working-directory: ./frigate/test/playwright
+        run: npx playwright test
+      - uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: playwright-report
+          path: frigate/test/playwright/playwright-report/
+          retention-days: 30
