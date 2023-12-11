@@ -260,20 +260,6 @@ class RecordExportConfig(FrigateBaseModel):
     )
 
 
-class RecordQualityEnum(str, Enum):
-    very_low = "very_low"
-    low = "low"
-    medium = "medium"
-    high = "high"
-    very_high = "very_high"
-
-
-class RecordPreviewConfig(FrigateBaseModel):
-    quality: RecordQualityEnum = Field(
-        default=RecordQualityEnum.medium, title="Quality of recording preview."
-    )
-
-
 class RecordConfig(FrigateBaseModel):
     enabled: bool = Field(default=False, title="Enable record on all cameras.")
     sync_recordings: bool = Field(
@@ -291,9 +277,6 @@ class RecordConfig(FrigateBaseModel):
     )
     export: RecordExportConfig = Field(
         default_factory=RecordExportConfig, title="Recording Export Config"
-    )
-    preview: RecordPreviewConfig = Field(
-        default_factory=RecordPreviewConfig, title="Recording Preview Config"
     )
     enabled_in_config: Optional[bool] = Field(
         title="Keep track of original state of recording."
