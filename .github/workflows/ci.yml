@@ -6,6 +6,7 @@ on:
     branches:
       - dev
       - master
+      - svk14
 
 # only run the latest commit to avoid cache overwrites
 concurrency:
