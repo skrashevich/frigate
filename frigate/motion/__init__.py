@@ -20,3 +20,11 @@ class MotionDetector(ABC):
     @abstractmethod
     def detect(self, frame):
         pass
+
+    @abstractmethod
+    def is_calibrating(self):
+        pass
+
+    @abstractmethod
+    def stop(self):
+        pass

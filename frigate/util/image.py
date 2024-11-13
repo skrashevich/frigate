@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+import subprocess as sp
 from abc import ABC, abstractmethod
 from multiprocessing import shared_memory
 from string import printable
@@ -9,8 +10,96 @@ from typing import AnyStr, Optional
 
 import cv2
 import numpy as np
+from unidecode import unidecode
 
 logger = logging.getLogger(__name__)
+
+
+def transliterate_to_latin(text: str) -> str:
+    """
+    Transliterate a given text to Latin.
+
+    This function uses the unidecode library to transliterate the input text to Latin.
+    It is useful for converting texts with diacritics or non-Latin characters to a
+    Latin equivalent.
+
+    Args:
+        text (str): The text to be transliterated.
+
+    Returns:
+        str: The transliterated text.
+
+    Example:
+        >>> transliterate_to_latin('frégate')
+        'fregate'
+    """
+    return unidecode(text)
+
+
+def on_edge(box, frame_shape):
+    if (
+        box[0] == 0
+        or box[1] == 0
+        or box[2] == frame_shape[1] - 1
+        or box[3] == frame_shape[0] - 1
+    ):
+        return True
+
+
+def has_better_attr(current_thumb, new_obj, attr_label) -> bool:
+    max_new_attr = max(
+        [0]
+        + [area(a["box"]) for a in new_obj["attributes"] if a["label"] == attr_label]
+    )
+    max_current_attr = max(
+        [0]
+        + [
+            area(a["box"])
+            for a in current_thumb["attributes"]
+            if a["label"] == attr_label
+        ]
+    )
+
+    # if the thumb has a higher scoring attr
+    return max_new_attr > max_current_attr
+
+
+def is_better_thumbnail(label, current_thumb, new_obj, frame_shape) -> bool:
+    # larger is better
+    # cutoff images are less ideal, but they should also be smaller?
+    # better scores are obviously better too
+
+    # check face on person
+    if label == "person":
+        if has_better_attr(current_thumb, new_obj, "face"):
+            return True
+        # if the current thumb has a face attr, dont update unless it gets better
+        if any([a["label"] == "face" for a in current_thumb["attributes"]]):
+            return False
+
+    # check license_plate on car
+    if label == "car":
+        if has_better_attr(current_thumb, new_obj, "license_plate"):
+            return True
+        # if the current thumb has a license_plate attr, dont update unless it gets better
+        if any([a["label"] == "license_plate" for a in current_thumb["attributes"]]):
+            return False
+
+    # if the new_thumb is on an edge, and the current thumb is not
+    if on_edge(new_obj["box"], frame_shape) and not on_edge(
+        current_thumb["box"], frame_shape
+    ):
+        return False
+
+    # if the score is better by more than 5%
+    if new_obj["score"] > current_thumb["score"] + 0.05:
+        return True
+
+    # if the area is 10% larger
+    if new_obj["area"] > current_thumb["area"] * 1.1:
+        return True
+
+    return False
 
 
 def draw_timestamp(
@@ -116,7 +205,10 @@ def draw_box_with_label(
 ):
     if color is None:
         color = (0, 0, 255)
-    display_text = "{}: {}".format(label, info)
+    try:
+        display_text = transliterate_to_latin("{}: {}".format(label, info))
+    except Exception:
+        display_text = "{}: {}".format(label, info)
     cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), color, thickness)
     font_scale = 0.5
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -184,6 +276,54 @@ def calculate_region(frame_shape, xmin, ymin, xmax, ymax, model_size, multiplier
         y_offset = max(0, (frame_shape[0] - size))
 
     return (x_offset, y_offset, x_offset + size, y_offset + size)
+
+
+def calculate_16_9_crop(frame_shape, xmin, ymin, xmax, ymax, multiplier=1.25):
+    min_size = 200
+
+    # size is the longest edge and divisible by 4
+    x_size = int((xmax - xmin) * multiplier)
+
+    if x_size < min_size:
+        x_size = min_size
+
+    y_size = int((ymax - ymin) * multiplier)
+
+    if y_size < min_size:
+        y_size = min_size
+
+    if frame_shape[1] / frame_shape[0] > 16 / 9 and x_size / y_size > 4:
+        return None
+
+    # calculate 16x9 using height
+    aspect_y_size = int(9 / 16 * x_size)
+
+    # if 16:9 by height is too small
+    if aspect_y_size < y_size or aspect_y_size > frame_shape[0]:
+        x_size = int((16 / 9) * y_size) // 4 * 4
+
+        if x_size / y_size > 1.8:
+            return None
+    else:
+        y_size = aspect_y_size // 4 * 4
+
+    # x_offset is midpoint of bounding box minus half the size
+    x_offset = int((xmax - xmin) / 2.0 + xmin - x_size / 2.0)
+    # if outside the image
+    if x_offset < 0:
+        x_offset = 0
+    elif x_offset > (frame_shape[1] - x_size):
+        x_offset = max(0, (frame_shape[1] - x_size))
+
+    # y_offset is midpoint of bounding box minus half the size
+    y_offset = int((ymax - ymin) / 2.0 + ymin - y_size / 2.0)
+    # # if outside the image
+    if y_offset < 0:
+        y_offset = 0
+    elif y_offset > (frame_shape[0] - y_size):
+        y_offset = max(0, (frame_shape[0] - y_size))
+
+    return (x_offset, y_offset, x_offset + x_size, y_offset + y_size)
 
 
 def get_yuv_crop(frame_shape, crop):
@@ -287,17 +427,14 @@ def yuv_crop_and_resize(frame, region, height=None):
     # copy u2
     yuv_cropped_frame[
         size + uv_channel_y_offset : size + uv_channel_y_offset + uv_crop_height,
-        size // 2
-        + uv_channel_x_offset : size // 2
+        size // 2 + uv_channel_x_offset : size // 2
         + uv_channel_x_offset
         + uv_crop_width,
     ] = frame[u2[1] : u2[3], u2[0] : u2[2]]
 
     # copy v1
     yuv_cropped_frame[
-        size
-        + size // 4
-        + uv_channel_y_offset : size
+        size + size // 4 + uv_channel_y_offset : size
         + size // 4
         + uv_channel_y_offset
         + uv_crop_height,
@@ -306,14 +443,11 @@ def yuv_crop_and_resize(frame, region, height=None):
 
     # copy v2
     yuv_cropped_frame[
-        size
-        + size // 4
-        + uv_channel_y_offset : size
+        size + size // 4 + uv_channel_y_offset : size
         + size // 4
         + uv_channel_y_offset
         + uv_crop_height,
-        size // 2
-        + uv_channel_x_offset : size // 2
+        size // 2 + uv_channel_x_offset : size // 2
         + uv_channel_x_offset
         + uv_crop_width,
     ] = frame[v2[1] : v2[3], v2[0] : v2[2]]
@@ -328,7 +462,7 @@ def yuv_to_3_channel_yuv(yuv_frame):
     # flatten the image into array
     yuv_data = yuv_frame.ravel()
 
-    # create a numpy array to hold all the 3 chanel yuv data
+    # create a numpy array to hold all the 3 channel yuv data
     all_yuv_data = np.empty((height, width, 3), dtype=np.uint8)
 
     y_count = height * width
@@ -368,6 +502,7 @@ def copy_yuv_to_position(
     destination_shape,
     source_frame=None,
     source_channel_dim=None,
+    interpolation=cv2.INTER_LINEAR,
 ):
     # get the coordinates of the channels for this position in the layout
     y, u1, u2, v1, v2 = get_yuv_crop(
@@ -416,7 +551,6 @@ def copy_yuv_to_position(
         uv_y_offset = y_y_offset // 4
         uv_x_offset = y_x_offset // 2
 
-        interpolation = cv2.INTER_LINEAR
         # resize/copy y channel
         destination_frame[
             y[1] + y_y_offset : y[1] + y_y_offset + y_resize_height,
@@ -556,7 +690,7 @@ def intersection_over_union(box_a, box_b):
 
     # compute the intersection over union by taking the intersection
     # area and dividing it by the sum of prediction + ground-truth
-    # areas - the interesection area
+    # areas - the intersection area
     iou = inter_area / float(box_a_area + box_b_area - inter_area)
 
     # return the intersection over union value
@@ -619,31 +753,46 @@ class DictFrameManager(FrameManager):
 
 class SharedMemoryFrameManager(FrameManager):
     def __init__(self):
-        self.shm_store = {}
+        self.shm_store: dict[str, shared_memory.SharedMemory] = {}
 
-    def create(self, name, size) -> AnyStr:
+    def create(self, name: str, size) -> AnyStr:
         shm = shared_memory.SharedMemory(name=name, create=True, size=size)
         self.shm_store[name] = shm
         return shm.buf
 
-    def get(self, name, shape):
+    def get(self, name: str, shape) -> Optional[np.ndarray]:
+        try:
+            if name in self.shm_store:
+                shm = self.shm_store[name]
+            else:
+                shm = shared_memory.SharedMemory(name=name)
+                self.shm_store[name] = shm
+            return np.ndarray(shape, dtype=np.uint8, buffer=shm.buf)
+        except FileNotFoundError:
+            return None
+
+    def close(self, name: str):
         if name in self.shm_store:
-            shm = self.shm_store[name]
+            self.shm_store[name].close()
+            del self.shm_store[name]
+
+    def delete(self, name: str):
+        if name in self.shm_store:
+            self.shm_store[name].close()
+
+            try:
+                self.shm_store[name].unlink()
+            except FileNotFoundError:
+                pass
+
+            del self.shm_store[name]
         else:
-            shm = shared_memory.SharedMemory(name=name)
-            self.shm_store[name] = shm
-        return np.ndarray(shape, dtype=np.uint8, buffer=shm.buf)
-
-    def close(self, name):
-        if name in self.shm_store:
-            self.shm_store[name].close()
-            del self.shm_store[name]
-
-    def delete(self, name):
-        if name in self.shm_store:
-            self.shm_store[name].close()
-            self.shm_store[name].unlink()
-            del self.shm_store[name]
+            try:
+                shm = shared_memory.SharedMemory(name=name)
+                shm.close()
+                shm.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def create_mask(frame_shape, mask):
@@ -660,9 +809,64 @@ def create_mask(frame_shape, mask):
     return mask_img
 
 
-def add_mask(mask, mask_img):
+def add_mask(mask: str, mask_img: np.ndarray):
     points = mask.split(",")
+
+    # masks and zones are saved as relative coordinates
+    # we know if any points are > 1 then it is using the
+    # old native resolution coordinates
+    if any(x > "1.0" for x in points):
+        raise Exception("add mask expects relative coordinates only")
+
     contour = np.array(
-        [[int(points[i]), int(points[i + 1])] for i in range(0, len(points), 2)]
+        [
+            [
+                int(float(points[i]) * mask_img.shape[1]),
+                int(float(points[i + 1]) * mask_img.shape[0]),
+            ]
+            for i in range(0, len(points), 2)
+        ]
     )
     cv2.fillPoly(mask_img, pts=[contour], color=(0))
+
+
+def get_image_from_recording(
+    ffmpeg,  # Ffmpeg Config
+    file_path: str,
+    relative_frame_time: float,
+    codec: str,
+    height: Optional[int] = None,
+) -> Optional[any]:
+    """retrieve a frame from given time in recording file."""
+
+    ffmpeg_cmd = [
+        ffmpeg.ffmpeg_path,
+        "-hide_banner",
+        "-loglevel",
+        "warning",
+        "-ss",
+        f"00:00:{relative_frame_time}",
+        "-i",
+        file_path,
+        "-frames:v",
+        "1",
+        "-c:v",
+        codec,
+        "-f",
+        "image2pipe",
+        "-",
+    ]
+
+    if height is not None:
+        ffmpeg_cmd.insert(-3, "-vf")
+        ffmpeg_cmd.insert(-3, f"scale=-1:{height}")
+
+    process = sp.run(
+        ffmpeg_cmd,
+        capture_output=True,
+    )
+
+    if process.returncode == 0:
+        return process.stdout
+    else:
+        return None

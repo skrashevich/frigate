@@ -1,6 +1,5 @@
 import datetime
 import logging
-import math
 import multiprocessing as mp
 import os
 import queue
@@ -8,15 +7,19 @@ import signal
 import subprocess as sp
 import threading
 import time
-from collections import defaultdict
 
 import cv2
-import numpy as np
 from setproctitle import setproctitle
 
+from frigate.camera import CameraMetrics, PTZMetrics
+from frigate.comms.config_updater import ConfigSubscriber
+from frigate.comms.inter_process import InterProcessRequestor
 from frigate.config import CameraConfig, DetectConfig, ModelConfig
-from frigate.const import ALL_ATTRIBUTE_LABELS, ATTRIBUTE_LABEL_MAP, CACHE_DIR
-from frigate.detectors.detector_config import PixelFormatEnum
+from frigate.const import (
+    CACHE_DIR,
+    CACHE_SEGMENT_FORMAT,
+    REQUEST_REGION_GRID,
+)
 from frigate.log import LogPipe
 from frigate.motion import MotionDetector
 from frigate.motion.improved_motion import ImprovedMotionDetector
@@ -24,107 +27,28 @@ from frigate.object_detection import RemoteObjectDetector
 from frigate.ptz.autotrack import ptz_moving_at_frame_time
 from frigate.track import ObjectTracker
 from frigate.track.norfair_tracker import NorfairTracker
-from frigate.types import PTZMetricsTypes
-from frigate.util.builtin import EventsPerSecond
+from frigate.track.tracked_object import TrackedObjectAttribute
+from frigate.util.builtin import EventsPerSecond, get_tomorrow_at_time
 from frigate.util.image import (
     FrameManager,
     SharedMemoryFrameManager,
-    area,
-    calculate_region,
     draw_box_with_label,
-    intersection,
-    intersection_over_union,
-    yuv_region_2_bgr,
-    yuv_region_2_rgb,
-    yuv_region_2_yuv,
+)
+from frigate.util.object import (
+    create_tensor_input,
+    get_cluster_candidates,
+    get_cluster_region,
+    get_cluster_region_from_grid,
+    get_min_region_size,
+    get_startup_regions,
+    inside_any,
+    intersects_any,
+    is_object_filtered,
+    reduce_detections,
 )
 from frigate.util.services import listen
 
 logger = logging.getLogger(__name__)
-
-
-def filtered(obj, objects_to_track, object_filters):
-    object_name = obj[0]
-    object_score = obj[1]
-    object_box = obj[2]
-    object_area = obj[3]
-    object_ratio = obj[4]
-
-    if object_name not in objects_to_track:
-        return True
-
-    if object_name in object_filters:
-        obj_settings = object_filters[object_name]
-
-        # if the min area is larger than the
-        # detected object, don't add it to detected objects
-        if obj_settings.min_area > object_area:
-            return True
-
-        # if the detected object is larger than the
-        # max area, don't add it to detected objects
-        if obj_settings.max_area < object_area:
-            return True
-
-        # if the score is lower than the min_score, skip
-        if obj_settings.min_score > object_score:
-            return True
-
-        # if the object is not proportionally wide enough
-        if obj_settings.min_ratio > object_ratio:
-            return True
-
-        # if the object is proportionally too wide
-        if obj_settings.max_ratio < object_ratio:
-            return True
-
-        if obj_settings.mask is not None:
-            # compute the coordinates of the object and make sure
-            # the location isn't outside the bounds of the image (can happen from rounding)
-            object_xmin = object_box[0]
-            object_xmax = object_box[2]
-            object_ymax = object_box[3]
-            y_location = min(int(object_ymax), len(obj_settings.mask) - 1)
-            x_location = min(
-                int((object_xmax + object_xmin) / 2.0),
-                len(obj_settings.mask[0]) - 1,
-            )
-
-            # if the object is in a masked location, don't add it to detected objects
-            if obj_settings.mask[y_location][x_location] == 0:
-                return True
-
-    return False
-
-
-def get_min_region_size(model_config: ModelConfig) -> int:
-    """Get the min region size and ensure it is divisible by 4."""
-    half = int(max(model_config.height, model_config.width) / 2)
-
-    if half % 4 == 0:
-        return half
-
-    return int((half + 3) / 4) * 4
-
-
-def create_tensor_input(frame, model_config: ModelConfig, region):
-    if model_config.input_pixel_format == PixelFormatEnum.rgb:
-        cropped_frame = yuv_region_2_rgb(frame, region)
-    elif model_config.input_pixel_format == PixelFormatEnum.bgr:
-        cropped_frame = yuv_region_2_bgr(frame, region)
-    else:
-        cropped_frame = yuv_region_2_yuv(frame, region)
-
-    # Resize if needed
-    if cropped_frame.shape != (model_config.height, model_config.width, 3):
-        cropped_frame = cv2.resize(
-            cropped_frame,
-            dsize=(model_config.width, model_config.height),
-            interpolation=cv2.INTER_LINEAR,
-        )
-
-    # Expand dimensions since the model expects images to have shape: [1, height, width, 3]
-    return np.expand_dims(cropped_frame, axis=0)
 
 
 def stop_ffmpeg(ffmpeg_process, logger):
@@ -134,7 +58,7 @@ def stop_ffmpeg(ffmpeg_process, logger):
         logger.info("Waiting for ffmpeg to exit gracefully...")
         ffmpeg_process.communicate(timeout=30)
     except sp.TimeoutExpired:
-        logger.info("FFmpeg didnt exit. Force killing...")
+        logger.info("FFmpeg didn't exit. Force killing...")
         ffmpeg_process.kill()
         ffmpeg_process.communicate()
     ffmpeg_process = None
@@ -168,7 +92,9 @@ def start_or_restart_ffmpeg(
 
 def capture_frames(
     ffmpeg_process,
-    camera_name,
+    config: CameraConfig,
+    shm_frame_count: int,
+    shm_frames: list[str],
     frame_shape,
     frame_manager: FrameManager,
     frame_queue,
@@ -182,27 +108,38 @@ def capture_frames(
     frame_rate.start()
     skipped_eps = EventsPerSecond()
     skipped_eps.start()
+
     while True:
         fps.value = frame_rate.eps()
         skipped_fps.value = skipped_eps.eps()
-
         current_frame.value = datetime.datetime.now().timestamp()
-        frame_name = f"{camera_name}{current_frame.value}"
+        frame_name = f"{config.name}{current_frame.value}"
         frame_buffer = frame_manager.create(frame_name, frame_size)
         try:
             frame_buffer[:] = ffmpeg_process.stdout.read(frame_size)
+
+            # update frame cache and cleanup existing frames
+            shm_frames.append(frame_name)
+
+            if len(shm_frames) > shm_frame_count:
+                expired_frame_name = shm_frames.pop(0)
+                frame_manager.delete(expired_frame_name)
         except Exception:
+            # always delete the frame
+            frame_manager.delete(frame_name)
+
             # shutdown has been initiated
             if stop_event.is_set():
                 break
-            logger.error(f"{camera_name}: Unable to read frames from ffmpeg process.")
+
+            logger.error(f"{config.name}: Unable to read frames from ffmpeg process.")
 
             if ffmpeg_process.poll() is not None:
                 logger.error(
-                    f"{camera_name}: ffmpeg process is not running. exiting capture thread..."
+                    f"{config.name}: ffmpeg process is not running. exiting capture thread..."
                 )
-                frame_manager.delete(frame_name)
                 break
+
             continue
 
         frame_rate.update()
@@ -211,12 +148,10 @@ def capture_frames(
         try:
             # add to the queue
             frame_queue.put(current_frame.value, False)
-            # close the frame
             frame_manager.close(frame_name)
         except queue.Full:
             # if the queue is full, skip this frame
             skipped_eps.update()
-            frame_manager.delete(frame_name)
 
 
 class CameraWatchdog(threading.Thread):
@@ -224,6 +159,7 @@ class CameraWatchdog(threading.Thread):
         self,
         camera_name,
         config: CameraConfig,
+        shm_frame_count: int,
         frame_queue,
         camera_fps,
         skipped_fps,
@@ -234,6 +170,8 @@ class CameraWatchdog(threading.Thread):
         self.logger = logging.getLogger(f"watchdog.{camera_name}")
         self.camera_name = camera_name
         self.config = config
+        self.shm_frame_count = shm_frame_count
+        self.shm_frames: list[str] = []
         self.capture_thread = None
         self.ffmpeg_detect_process = None
         self.logpipe = LogPipe(f"ffmpeg.{self.camera_name}.detect")
@@ -244,6 +182,7 @@ class CameraWatchdog(threading.Thread):
         self.frame_queue = frame_queue
         self.frame_shape = self.config.frame_shape_yuv
         self.frame_size = self.frame_shape[0] * self.frame_shape[1]
+        self.fps_overflow_count = 0
         self.stop_event = stop_event
         self.sleeptime = self.config.ffmpeg.retry_interval
 
@@ -293,31 +232,39 @@ class CameraWatchdog(threading.Thread):
                     self.ffmpeg_detect_process.kill()
                     self.ffmpeg_detect_process.communicate()
             elif self.camera_fps.value >= (self.config.detect.fps + 10):
-                self.camera_fps.value = 0
-                self.logger.info(
-                    f"{self.camera_name} exceeded fps limit. Exiting ffmpeg..."
-                )
-                self.ffmpeg_detect_process.terminate()
-                try:
-                    self.logger.info("Waiting for ffmpeg to exit gracefully...")
-                    self.ffmpeg_detect_process.communicate(timeout=30)
-                except sp.TimeoutExpired:
-                    self.logger.info("FFmpeg did not exit. Force killing...")
-                    self.ffmpeg_detect_process.kill()
-                    self.ffmpeg_detect_process.communicate()
+                self.fps_overflow_count += 1
+
+                if self.fps_overflow_count == 3:
+                    self.fps_overflow_count = 0
+                    self.camera_fps.value = 0
+                    self.logger.info(
+                        f"{self.camera_name} exceeded fps limit. Exiting ffmpeg..."
+                    )
+                    self.ffmpeg_detect_process.terminate()
+                    try:
+                        self.logger.info("Waiting for ffmpeg to exit gracefully...")
+                        self.ffmpeg_detect_process.communicate(timeout=30)
+                    except sp.TimeoutExpired:
+                        self.logger.info("FFmpeg did not exit. Force killing...")
+                        self.ffmpeg_detect_process.kill()
+                        self.ffmpeg_detect_process.communicate()
+            else:
+                # process is running normally
+                self.fps_overflow_count = 0
 
             for p in self.ffmpeg_other_processes:
                 poll = p["process"].poll()
 
                 if self.config.record.enabled and "record" in p["roles"]:
-                    latest_segment_time = self.get_latest_segment_timestamp(
+                    latest_segment_time = self.get_latest_segment_datetime(
                         p.get(
-                            "latest_segment_time", datetime.datetime.now().timestamp()
+                            "latest_segment_time",
+                            datetime.datetime.now().astimezone(datetime.timezone.utc),
                         )
                     )
 
-                    if datetime.datetime.now().timestamp() > (
-                        latest_segment_time + 120
+                    if datetime.datetime.now().astimezone(datetime.timezone.utc) > (
+                        latest_segment_time + datetime.timedelta(seconds=120)
                     ):
                         self.logger.error(
                             f"No new recording segments were created for {self.camera_name} in the last 120s. restarting the ffmpeg record process..."
@@ -355,7 +302,9 @@ class CameraWatchdog(threading.Thread):
         )
         self.ffmpeg_pid.value = self.ffmpeg_detect_process.pid
         self.capture_thread = CameraCapture(
-            self.camera_name,
+            self.config,
+            self.shm_frame_count,
+            self.shm_frames,
             self.ffmpeg_detect_process,
             self.frame_shape,
             self.frame_queue,
@@ -365,7 +314,7 @@ class CameraWatchdog(threading.Thread):
         )
         self.capture_thread.start()
 
-    def get_latest_segment_timestamp(self, latest_timestamp) -> int:
+    def get_latest_segment_datetime(self, latest_segment: datetime.datetime) -> int:
         """Checks if ffmpeg is still writing recording segments to cache."""
         cache_files = sorted(
             [
@@ -373,26 +322,30 @@ class CameraWatchdog(threading.Thread):
                 for d in os.listdir(CACHE_DIR)
                 if os.path.isfile(os.path.join(CACHE_DIR, d))
                 and d.endswith(".mp4")
-                and not d.startswith("clip_")
+                and not d.startswith("preview_")
             ]
         )
-        newest_segment_timestamp = latest_timestamp
+        newest_segment_time = latest_segment
 
         for file in cache_files:
             if self.camera_name in file:
                 basename = os.path.splitext(file)[0]
-                _, date = basename.rsplit("-", maxsplit=1)
-                ts = datetime.datetime.strptime(date, "%Y%m%d%H%M%S").timestamp()
-                if ts > newest_segment_timestamp:
-                    newest_segment_timestamp = ts
+                _, date = basename.rsplit("@", maxsplit=1)
+                segment_time = datetime.datetime.strptime(
+                    date, CACHE_SEGMENT_FORMAT
+                ).astimezone(datetime.timezone.utc)
+                if segment_time > newest_segment_time:
+                    newest_segment_time = segment_time
 
-        return newest_segment_timestamp
+        return newest_segment_time
 
 
 class CameraCapture(threading.Thread):
     def __init__(
         self,
-        camera_name,
+        config: CameraConfig,
+        shm_frame_count: int,
+        shm_frames: list[str],
         ffmpeg_process,
         frame_shape,
         frame_queue,
@@ -401,8 +354,10 @@ class CameraCapture(threading.Thread):
         stop_event,
     ):
         threading.Thread.__init__(self)
-        self.name = f"capture:{camera_name}"
-        self.camera_name = camera_name
+        self.name = f"capture:{config.name}"
+        self.config = config
+        self.shm_frame_count = shm_frame_count
+        self.shm_frames = shm_frames
         self.frame_shape = frame_shape
         self.frame_queue = frame_queue
         self.fps = fps
@@ -416,7 +371,9 @@ class CameraCapture(threading.Thread):
     def run(self):
         capture_frames(
             self.ffmpeg_process,
-            self.camera_name,
+            self.config,
+            self.shm_frame_count,
+            self.shm_frames,
             self.frame_shape,
             self.frame_manager,
             self.frame_queue,
@@ -427,7 +384,9 @@ class CameraCapture(threading.Thread):
         )
 
 
-def capture_camera(name, config: CameraConfig, process_info):
+def capture_camera(
+    name, config: CameraConfig, shm_frame_count: int, camera_metrics: CameraMetrics
+):
     stop_event = mp.Event()
 
     def receiveSignal(signalNumber, frame):
@@ -439,14 +398,14 @@ def capture_camera(name, config: CameraConfig, process_info):
     threading.current_thread().name = f"capture:{name}"
     setproctitle(f"frigate.capture:{name}")
 
-    frame_queue = process_info["frame_queue"]
     camera_watchdog = CameraWatchdog(
         name,
         config,
-        frame_queue,
-        process_info["camera_fps"],
-        process_info["skipped_fps"],
-        process_info["ffmpeg_pid"],
+        shm_frame_count,
+        camera_metrics.frame_queue,
+        camera_metrics.camera_fps,
+        camera_metrics.skipped_fps,
+        camera_metrics.ffmpeg_pid,
         stop_event,
     )
     camera_watchdog.start()
@@ -461,8 +420,9 @@ def track_camera(
     detection_queue,
     result_connection,
     detected_objects_queue,
-    process_info,
-    ptz_metrics,
+    camera_metrics: CameraMetrics,
+    ptz_metrics: PTZMetrics,
+    region_grid,
 ):
     stop_event = mp.Event()
 
@@ -476,24 +436,14 @@ def track_camera(
     setproctitle(f"frigate.process:{name}")
     listen()
 
-    frame_queue = process_info["frame_queue"]
-    detection_enabled = process_info["detection_enabled"]
-    motion_enabled = process_info["motion_enabled"]
-    improve_contrast_enabled = process_info["improve_contrast_enabled"]
-    motion_threshold = process_info["motion_threshold"]
-    motion_contour_area = process_info["motion_contour_area"]
+    frame_queue = camera_metrics.frame_queue
 
     frame_shape = config.frame_shape
     objects_to_track = config.objects.track
     object_filters = config.objects.filters
 
     motion_detector = ImprovedMotionDetector(
-        frame_shape,
-        config.motion,
-        config.detect.fps,
-        improve_contrast_enabled,
-        motion_threshold,
-        motion_contour_area,
+        frame_shape, config.motion, config.detect.fps, name=config.name
     )
     object_detector = RemoteObjectDetector(
         name, labelmap, detection_queue, result_connection, model_config, stop_event
@@ -503,8 +453,12 @@ def track_camera(
 
     frame_manager = SharedMemoryFrameManager()
 
+    # create communication for region grid updates
+    requestor = InterProcessRequestor()
+
     process_frames(
         name,
+        requestor,
         frame_queue,
         frame_shape,
         model_config,
@@ -514,55 +468,21 @@ def track_camera(
         object_detector,
         object_tracker,
         detected_objects_queue,
-        process_info,
+        camera_metrics,
         objects_to_track,
         object_filters,
-        detection_enabled,
-        motion_enabled,
         stop_event,
         ptz_metrics,
+        region_grid,
     )
 
+    # empty the frame queue
+    logger.info(f"{name}: emptying frame queue")
+    while not frame_queue.empty():
+        frame_time = frame_queue.get(False)
+        frame_manager.delete(f"{name}{frame_time}")
+
     logger.info(f"{name}: exiting subprocess")
-
-
-def box_overlaps(b1, b2):
-    if b1[2] < b2[0] or b1[0] > b2[2] or b1[1] > b2[3] or b1[3] < b2[1]:
-        return False
-    return True
-
-
-def box_inside(b1, b2):
-    # check if b2 is inside b1
-    if b2[0] >= b1[0] and b2[1] >= b1[1] and b2[2] <= b1[2] and b2[3] <= b1[3]:
-        return True
-    return False
-
-
-def reduce_boxes(boxes, iou_threshold=0.0):
-    clusters = []
-
-    for box in boxes:
-        matched = 0
-        for cluster in clusters:
-            if intersection_over_union(box, cluster) > iou_threshold:
-                matched = 1
-                cluster[0] = min(cluster[0], box[0])
-                cluster[1] = min(cluster[1], box[1])
-                cluster[2] = max(cluster[2], box[2])
-                cluster[3] = max(cluster[3], box[3])
-
-        if not matched:
-            clusters.append(list(box))
-
-    return [tuple(c) for c in clusters]
-
-
-def intersects_any(box_a, boxes):
-    for box in boxes:
-        if box_overlaps(box_a, box):
-            return True
-    return False
 
 
 def detect(
@@ -603,133 +523,15 @@ def detect(
             region,
         )
         # apply object filters
-        if filtered(det, objects_to_track, object_filters):
+        if is_object_filtered(det, objects_to_track, object_filters):
             continue
         detections.append(det)
     return detections
 
 
-def get_cluster_boundary(box, min_region):
-    # compute the max region size for the current box (box is 10% of region)
-    box_width = box[2] - box[0]
-    box_height = box[3] - box[1]
-    max_region_area = abs(box_width * box_height) / 0.1
-    max_region_size = max(min_region, int(math.sqrt(max_region_area)))
-
-    centroid = (box_width / 2 + box[0], box_height / 2 + box[1])
-
-    max_x_dist = int(max_region_size - box_width / 2 * 1.1)
-    max_y_dist = int(max_region_size - box_height / 2 * 1.1)
-
-    return [
-        int(centroid[0] - max_x_dist),
-        int(centroid[1] - max_y_dist),
-        int(centroid[0] + max_x_dist),
-        int(centroid[1] + max_y_dist),
-    ]
-
-
-def get_cluster_candidates(frame_shape, min_region, boxes):
-    # and create a cluster of other boxes using it's max region size
-    # only include boxes where the region is an appropriate(except the region could possibly be smaller?)
-    # size in the cluster. in order to be in the cluster, the furthest corner needs to be within x,y offset
-    # determined by the max_region size minus half the box + 20%
-    # TODO: see if we can do this with numpy
-    cluster_candidates = []
-    used_boxes = []
-    # loop over each box
-    for current_index, b in enumerate(boxes):
-        if current_index in used_boxes:
-            continue
-        cluster = [current_index]
-        used_boxes.append(current_index)
-        cluster_boundary = get_cluster_boundary(b, min_region)
-        # find all other boxes that fit inside the boundary
-        for compare_index, compare_box in enumerate(boxes):
-            if compare_index in used_boxes:
-                continue
-
-            # if the box is not inside the potential cluster area, cluster them
-            if not box_inside(cluster_boundary, compare_box):
-                continue
-
-            # get the region if you were to add this box to the cluster
-            potential_cluster = cluster + [compare_index]
-            cluster_region = get_cluster_region(
-                frame_shape, min_region, potential_cluster, boxes
-            )
-            # if region could be smaller and either box would be too small
-            # for the resulting region, dont cluster
-            should_cluster = True
-            if (cluster_region[2] - cluster_region[0]) > min_region:
-                for b in potential_cluster:
-                    box = boxes[b]
-                    # boxes should be more than 5% of the area of the region
-                    if area(box) / area(cluster_region) < 0.05:
-                        should_cluster = False
-                        break
-
-            if should_cluster:
-                cluster.append(compare_index)
-                used_boxes.append(compare_index)
-        cluster_candidates.append(cluster)
-
-    # return the unique clusters only
-    unique = {tuple(sorted(c)) for c in cluster_candidates}
-    return [list(tup) for tup in unique]
-
-
-def get_cluster_region(frame_shape, min_region, cluster, boxes):
-    min_x = frame_shape[1]
-    min_y = frame_shape[0]
-    max_x = 0
-    max_y = 0
-    for b in cluster:
-        min_x = min(boxes[b][0], min_x)
-        min_y = min(boxes[b][1], min_y)
-        max_x = max(boxes[b][2], max_x)
-        max_y = max(boxes[b][3], max_y)
-    return calculate_region(
-        frame_shape, min_x, min_y, max_x, max_y, min_region, multiplier=1.2
-    )
-
-
-def get_consolidated_object_detections(detected_object_groups):
-    """Drop detections that overlap too much"""
-    consolidated_detections = []
-    for group in detected_object_groups.values():
-        # if the group only has 1 item, skip
-        if len(group) == 1:
-            consolidated_detections.append(group[0])
-            continue
-
-        # sort smallest to largest by area
-        sorted_by_area = sorted(group, key=lambda g: g[3])
-
-        for current_detection_idx in range(0, len(sorted_by_area)):
-            current_detection = sorted_by_area[current_detection_idx][2]
-            overlap = 0
-            for to_check_idx in range(
-                min(current_detection_idx + 1, len(sorted_by_area)),
-                len(sorted_by_area),
-            ):
-                to_check = sorted_by_area[to_check_idx][2]
-                intersect_box = intersection(current_detection, to_check)
-                # if 90% of smaller detection is inside of another detection, consolidate
-                if (
-                    intersect_box is not None
-                    and area(intersect_box) / area(current_detection) > 0.9
-                ):
-                    overlap = 1
-                    break
-            if overlap == 0:
-                consolidated_detections.append(sorted_by_area[current_detection_idx])
-
-    return consolidated_detections
-
-
 def process_frames(
     camera_name: str,
+    requestor: InterProcessRequestor,
     frame_queue: mp.Queue,
     frame_shape,
     model_config: ModelConfig,
@@ -739,27 +541,39 @@ def process_frames(
     object_detector: RemoteObjectDetector,
     object_tracker: ObjectTracker,
     detected_objects_queue: mp.Queue,
-    process_info: dict,
+    camera_metrics: CameraMetrics,
     objects_to_track: list[str],
     object_filters,
-    detection_enabled: mp.Value,
-    motion_enabled: mp.Value,
     stop_event,
-    ptz_metrics: PTZMetricsTypes,
+    ptz_metrics: PTZMetrics,
+    region_grid,
     exit_on_empty: bool = False,
 ):
-    fps = process_info["process_fps"]
-    detection_fps = process_info["detection_fps"]
-    current_frame_time = process_info["detection_frame"]
+    next_region_update = get_tomorrow_at_time(2)
+    config_subscriber = ConfigSubscriber(f"config/detect/{camera_name}")
 
     fps_tracker = EventsPerSecond()
     fps_tracker.start()
 
-    startup_scan_counter = 0
+    startup_scan = True
+    stationary_frame_counter = 0
 
     region_min_size = get_min_region_size(model_config)
 
     while not stop_event.is_set():
+        # check for updated detect config
+        _, updated_detect_config = config_subscriber.check_for_update()
+
+        if updated_detect_config:
+            detect_config = updated_detect_config
+
+        if (
+            datetime.datetime.now().astimezone(datetime.timezone.utc)
+            > next_region_update
+        ):
+            region_grid = requestor.send_data(REQUEST_REGION_GRID, camera_name)
+            next_region_update = get_tomorrow_at_time(2)
+
         try:
             if exit_on_empty:
                 frame_time = frame_queue.get(False)
@@ -771,95 +585,110 @@ def process_frames(
                 break
             continue
 
-        current_frame_time.value = frame_time
+        camera_metrics.detection_frame.value = frame_time
+        ptz_metrics.frame_time.value = frame_time
 
         frame = frame_manager.get(
             f"{camera_name}{frame_time}", (frame_shape[0] * 3 // 2, frame_shape[1])
         )
 
         if frame is None:
-            logger.info(f"{camera_name}: frame {frame_time} is not in memory store.")
+            logger.debug(f"{camera_name}: frame {frame_time} is not in memory store.")
             continue
 
-        # look for motion if enabled and ptz is not moving
-        # ptz_moving_at_frame_time() always returns False for
-        # non ptz/autotracking cameras
-        motion_boxes = (
-            motion_detector.detect(frame)
-            if motion_enabled.value
-            and not ptz_moving_at_frame_time(
-                frame_time,
-                ptz_metrics["ptz_start_time"].value,
-                ptz_metrics["ptz_stop_time"].value,
-            )
-            else []
-        )
+        # look for motion if enabled
+        motion_boxes = motion_detector.detect(frame)
 
         regions = []
         consolidated_detections = []
 
         # if detection is disabled
-        if not detection_enabled.value:
+        if not detect_config.enabled:
             object_tracker.match_and_update(frame_time, [])
         else:
             # get stationary object ids
             # check every Nth frame for stationary objects
             # disappeared objects are not stationary
             # also check for overlapping motion boxes
-            stationary_object_ids = [
-                obj["id"]
-                for obj in object_tracker.tracked_objects.values()
-                # if it has exceeded the stationary threshold
-                if obj["motionless_count"] >= detect_config.stationary.threshold
-                # and it isn't due for a periodic check
-                and (
-                    detect_config.stationary.interval == 0
-                    or obj["motionless_count"] % detect_config.stationary.interval != 0
-                )
-                # and it hasn't disappeared
-                and object_tracker.disappeared[obj["id"]] == 0
-                # and it doesn't overlap with any current motion boxes
-                and not intersects_any(obj["box"], motion_boxes)
-            ]
+            if stationary_frame_counter == detect_config.stationary.interval:
+                stationary_frame_counter = 0
+                stationary_object_ids = []
+            else:
+                stationary_frame_counter += 1
+                stationary_object_ids = [
+                    obj["id"]
+                    for obj in object_tracker.tracked_objects.values()
+                    # if it has exceeded the stationary threshold
+                    if obj["motionless_count"] >= detect_config.stationary.threshold
+                    # and it hasn't disappeared
+                    and object_tracker.disappeared[obj["id"]] == 0
+                    # and it doesn't overlap with any current motion boxes when not calibrating
+                    and not intersects_any(
+                        obj["box"],
+                        [] if motion_detector.is_calibrating() else motion_boxes,
+                    )
+                ]
 
             # get tracked object boxes that aren't stationary
             tracked_object_boxes = [
-                obj["estimate"]
+                (
+                    # use existing object box for stationary objects
+                    obj["estimate"]
+                    if obj["motionless_count"] < detect_config.stationary.threshold
+                    else obj["box"]
+                )
                 for obj in object_tracker.tracked_objects.values()
                 if obj["id"] not in stationary_object_ids
             ]
+            object_boxes = tracked_object_boxes + object_tracker.untracked_object_boxes
 
-            combined_boxes = motion_boxes + tracked_object_boxes
-
-            cluster_candidates = get_cluster_candidates(
-                frame_shape, region_min_size, combined_boxes
-            )
-
+            # get consolidated regions for tracked objects
             regions = [
                 get_cluster_region(
-                    frame_shape, region_min_size, candidate, combined_boxes
+                    frame_shape, region_min_size, candidate, object_boxes
                 )
-                for candidate in cluster_candidates
+                for candidate in get_cluster_candidates(
+                    frame_shape, region_min_size, object_boxes
+                )
             ]
 
-            # if starting up, get the next startup scan region
-            if startup_scan_counter < 9:
-                ymin = int(frame_shape[0] / 3 * startup_scan_counter / 3)
-                ymax = int(frame_shape[0] / 3 + ymin)
-                xmin = int(frame_shape[1] / 3 * startup_scan_counter / 3)
-                xmax = int(frame_shape[1] / 3 + xmin)
-                regions.append(
-                    calculate_region(
+            # only add in the motion boxes when not calibrating and a ptz is not moving via autotracking
+            # ptz_moving_at_frame_time() always returns False for non-autotracking cameras
+            if not motion_detector.is_calibrating() and not ptz_moving_at_frame_time(
+                frame_time,
+                ptz_metrics.start_time.value,
+                ptz_metrics.stop_time.value,
+            ):
+                # find motion boxes that are not inside tracked object regions
+                standalone_motion_boxes = [
+                    b for b in motion_boxes if not inside_any(b, regions)
+                ]
+
+                if standalone_motion_boxes:
+                    motion_clusters = get_cluster_candidates(
                         frame_shape,
-                        xmin,
-                        ymin,
-                        xmax,
-                        ymax,
                         region_min_size,
-                        multiplier=1.2,
+                        standalone_motion_boxes,
                     )
-                )
-                startup_scan_counter += 1
+                    motion_regions = [
+                        get_cluster_region_from_grid(
+                            frame_shape,
+                            region_min_size,
+                            candidate,
+                            standalone_motion_boxes,
+                            region_grid,
+                        )
+                        for candidate in motion_clusters
+                    ]
+                    regions += motion_regions
+
+            # if starting up, get the next startup scan region
+            if startup_scan:
+                for region in get_startup_regions(
+                    frame_shape, region_min_size, region_grid
+                ):
+                    regions.append(region)
+                startup_scan = False
 
             # resize regions and detect
             # seed with stationary objects
@@ -889,54 +718,14 @@ def process_frames(
                     )
                 )
 
-            #########
-            # merge objects
-            #########
-            # group by name
-            detected_object_groups = defaultdict(lambda: [])
-            for detection in detections:
-                detected_object_groups[detection[0]].append(detection)
-
-            selected_objects = []
-            for group in detected_object_groups.values():
-                # apply non-maxima suppression to suppress weak, overlapping bounding boxes
-                # o[2] is the box of the object: xmin, ymin, xmax, ymax
-                # apply max/min to ensure values do not exceed the known frame size
-                boxes = [
-                    (
-                        o[2][0],
-                        o[2][1],
-                        o[2][2] - o[2][0],
-                        o[2][3] - o[2][1],
-                    )
-                    for o in group
-                ]
-                confidences = [o[1] for o in group]
-                idxs = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
-
-                # add objects
-                for index in idxs:
-                    index = index if isinstance(index, np.int32) else index[0]
-                    obj = group[index]
-                    selected_objects.append(obj)
-
-            # set the detections list to only include top objects
-            detections = selected_objects
+            consolidated_detections = reduce_detections(frame_shape, detections)
 
             # if detection was run on this frame, consolidate
             if len(regions) > 0:
-                # group by name
-                detected_object_groups = defaultdict(lambda: [])
-                for detection in detections:
-                    detected_object_groups[detection[0]].append(detection)
-
-                consolidated_detections = get_consolidated_object_detections(
-                    detected_object_groups
-                )
                 tracked_detections = [
                     d
                     for d in consolidated_detections
-                    if d[0] not in ALL_ATTRIBUTE_LABELS
+                    if d[0] not in model_config.all_attributes
                 ]
                 # now that we have refined our detections, we need to track objects
                 object_tracker.match_and_update(frame_time, tracked_detections)
@@ -945,29 +734,34 @@ def process_frames(
                 object_tracker.update_frame_times(frame_time)
 
         # group the attribute detections based on what label they apply to
-        attribute_detections = {}
-        for label, attribute_labels in ATTRIBUTE_LABEL_MAP.items():
+        attribute_detections: dict[str, list[TrackedObjectAttribute]] = {}
+        for label, attribute_labels in model_config.attributes_map.items():
             attribute_detections[label] = [
-                d for d in consolidated_detections if d[0] in attribute_labels
+                TrackedObjectAttribute(d)
+                for d in consolidated_detections
+                if d[0] in attribute_labels
             ]
 
-        # build detections and add attributes
+        # build detections
         detections = {}
         for obj in object_tracker.tracked_objects.values():
-            attributes = []
-            # if the objects label has associated attribute detections
-            if obj["label"] in attribute_detections.keys():
-                # add them to attributes if they intersect
-                for attribute_detection in attribute_detections[obj["label"]]:
-                    if box_inside(obj["box"], (attribute_detection[2])):
-                        attributes.append(
-                            {
-                                "label": attribute_detection[0],
-                                "score": attribute_detection[1],
-                                "box": attribute_detection[2],
-                            }
-                        )
-            detections[obj["id"]] = {**obj, "attributes": attributes}
+            detections[obj["id"]] = {**obj, "attributes": []}
+
+        # find the best object for each attribute to be assigned to
+        all_objects: list[dict[str, any]] = object_tracker.tracked_objects.values()
+        for attributes in attribute_detections.values():
+            for attribute in attributes:
+                filtered_objects = filter(
+                    lambda o: attribute.label
+                    in model_config.attributes_map.get(o["label"], []),
+                    all_objects,
+                )
+                selected_object_id = attribute.find_best_object(filtered_objects)
+
+                if selected_object_id is not None:
+                    detections[selected_object_id]["attributes"].append(
+                        attribute.get_tracking_data()
+                    )
 
         # debug object tracking
         if False:
@@ -1046,7 +840,7 @@ def process_frames(
             continue
         else:
             fps_tracker.update()
-            fps.value = fps_tracker.eps()
+            camera_metrics.process_fps.value = fps_tracker.eps()
             detected_objects_queue.put(
                 (
                     camera_name,
@@ -1056,5 +850,9 @@ def process_frames(
                     regions,
                 )
             )
-            detection_fps.value = object_detector.fps.eps()
+            camera_metrics.detection_fps.value = object_detector.fps.eps()
             frame_manager.close(f"{camera_name}{frame_time}")
+
+    motion_detector.stop()
+    requestor.stop()
+    config_subscriber.stop()

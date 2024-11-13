@@ -13,8 +13,15 @@ from typing import Optional
 import cv2
 import psutil
 import py3nvml.py3nvml as nvml
+import requests
 
-from frigate.util.builtin import escape_special_characters
+from frigate.const import (
+    DRIVER_AMD,
+    DRIVER_ENV_VAR,
+    FFMPEG_HWACCEL_NVIDIA,
+    FFMPEG_HWACCEL_VAAPI,
+)
+from frigate.util.builtin import clean_camera_user_pass, escape_special_characters
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +33,7 @@ def restart_frigate():
         proc.terminate()
     # otherwise, just try and exit frigate
     else:
-        os.kill(os.getpid(), signal.SIGTERM)
+        os.kill(os.getpid(), signal.SIGINT)
 
 
 def print_stack(sig, frame):
@@ -96,8 +103,17 @@ def get_cpu_stats() -> dict[str, dict]:
     docker_memlimit = get_docker_memlimit_bytes() / 1024
     total_mem = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1024
 
+    system_cpu = psutil.cpu_percent(
+        interval=None
+    )  # no interval as we don't want to be blocking
+    system_mem = psutil.virtual_memory()
+    usages["frigate.full_system"] = {
+        "cpu": str(system_cpu),
+        "mem": str(system_mem.percent),
+    }
+
     for process in psutil.process_iter(["pid", "name", "cpu_percent", "cmdline"]):
-        pid = process.info["pid"]
+        pid = str(process.info["pid"])
         try:
             cpu_percent = process.info["cpu_percent"]
             cmdline = process.info["cmdline"]
@@ -106,7 +122,7 @@ def get_cpu_stats() -> dict[str, dict]:
                 stats = f.readline().split()
             utime = int(stats[13])
             stime = int(stats[14])
-            starttime = int(stats[21])
+            start_time = int(stats[21])
 
             with open("/proc/uptime") as f:
                 system_uptime_sec = int(float(f.read().split()[0]))
@@ -115,9 +131,9 @@ def get_cpu_stats() -> dict[str, dict]:
 
             process_utime_sec = utime // clk_tck
             process_stime_sec = stime // clk_tck
-            process_starttime_sec = starttime // clk_tck
+            process_start_time_sec = start_time // clk_tck
 
-            process_elapsed_sec = system_uptime_sec - process_starttime_sec
+            process_elapsed_sec = system_uptime_sec - process_start_time_sec
             process_usage_sec = process_utime_sec + process_stime_sec
             cpu_average_usage = process_usage_sec * 100 // process_elapsed_sec
 
@@ -134,7 +150,7 @@ def get_cpu_stats() -> dict[str, dict]:
                 "cpu": str(cpu_percent),
                 "cpu_average": str(round(cpu_average_usage, 2)),
                 "mem": f"{mem_pct}",
-                "cmdline": " ".join(cmdline),
+                "cmdline": clean_camera_user_pass(" ".join(cmdline)),
             }
         except Exception:
             continue
@@ -143,6 +159,9 @@ def get_cpu_stats() -> dict[str, dict]:
 
 
 def get_physical_interfaces(interfaces) -> list:
+    if not interfaces:
+        return []
+
     with open("/proc/net/dev", "r") as file:
         lines = file.readlines()
 
@@ -171,6 +190,7 @@ def get_bandwidth_stats(config) -> dict[str, dict]:
     )
 
     if p.returncode != 0:
+        logger.error(f"Error getting network stats :: {p.stderr}")
         return usages
     else:
         lines = p.stdout.split("\n")
@@ -188,6 +208,25 @@ def get_bandwidth_stats(config) -> dict[str, dict]:
                 continue
 
     return usages
+
+
+def is_vaapi_amd_driver() -> bool:
+    # Use the explicitly configured driver, if available
+    driver = os.environ.get(DRIVER_ENV_VAR)
+    if driver:
+        return driver == DRIVER_AMD
+
+    # Otherwise, ask vainfo what is has autodetected
+    p = vainfo_hwaccel()
+
+    if p.returncode != 0:
+        logger.error(f"Unable to poll vainfo: {p.stderr}")
+        return False
+    else:
+        output = p.stdout.decode("unicode_escape").split("\n")
+
+        # VA Info will print out the friendly name of the driver
+        return any("AMD Radeon Graphics" in line for line in output)
 
 
 def get_amd_gpu_stats() -> dict[str, str]:
@@ -218,6 +257,40 @@ def get_amd_gpu_stats() -> dict[str, str]:
 
 def get_intel_gpu_stats() -> dict[str, str]:
     """Get stats using intel_gpu_top."""
+
+    def get_stats_manually(output: str) -> dict[str, str]:
+        """Find global stats via regex when json fails to parse."""
+        reading = "".join(output)
+        results: dict[str, str] = {}
+
+        # render is used for qsv
+        render = []
+        for result in re.findall(r'"Render/3D/0":{[a-z":\d.,%]+}', reading):
+            packet = json.loads(result[14:])
+            single = packet.get("busy", 0.0)
+            render.append(float(single))
+
+        if render:
+            render_avg = sum(render) / len(render)
+        else:
+            render_avg = 1
+
+        # video is used for vaapi
+        video = []
+        for result in re.findall(r'"Video/\d":{[a-z":\d.,%]+}', reading):
+            packet = json.loads(result[10:])
+            single = packet.get("busy", 0.0)
+            video.append(float(single))
+
+        if video:
+            video_avg = sum(video) / len(video)
+        else:
+            video_avg = 1
+
+        results["gpu"] = f"{round((video_avg + render_avg) / 2, 2)}%"
+        results["mem"] = "-%"
+        return results
+
     intel_gpu_top_command = [
         "timeout",
         "0.5s",
@@ -240,41 +313,77 @@ def get_intel_gpu_stats() -> dict[str, str]:
         logger.error(f"Unable to poll intel GPU stats: {p.stderr}")
         return None
     else:
-        reading = "".join(p.stdout.split())
+        output = "".join(p.stdout.split())
+
+        try:
+            data = json.loads(f"[{output}]")
+        except json.JSONDecodeError:
+            return get_stats_manually(output)
+
         results: dict[str, str] = {}
+        render = {"global": []}
+        video = {"global": []}
 
-        # render is used for qsv
-        render = []
-        for result in re.findall(r'"Render/3D/0":{[a-z":\d.,%]+}', reading):
-            packet = json.loads(result[14:])
-            single = packet.get("busy", 0.0)
-            render.append(float(single))
+        for block in data:
+            global_engine = block.get("engines")
 
-        if render:
-            render_avg = sum(render) / len(render)
-        else:
-            render_avg = 1
+            if global_engine:
+                render_frame = global_engine.get("Render/3D/0", {}).get("busy")
+                video_frame = global_engine.get("Video/0", {}).get("busy")
 
-        # video is used for vaapi
-        video = []
-        for result in re.findall('"Video/\d":{[a-z":\d.,%]+}', reading):
-            packet = json.loads(result[10:])
-            single = packet.get("busy", 0.0)
-            video.append(float(single))
+                if render_frame is not None:
+                    render["global"].append(float(render_frame))
 
-        if video:
-            video_avg = sum(video) / len(video)
-        else:
-            video_avg = 1
+                if video_frame is not None:
+                    video["global"].append(float(video_frame))
 
-        results["gpu"] = f"{round((video_avg + render_avg) / 2, 2)}%"
-        results["mem"] = "-%"
+            clients = block.get("clients", {})
+
+            if clients and len(clients):
+                for client_block in clients.values():
+                    key = client_block["pid"]
+
+                    if render.get(key) is None:
+                        render[key] = []
+                        video[key] = []
+
+                    client_engine = client_block.get("engine-classes", {})
+
+                    render_frame = client_engine.get("Render/3D", {}).get("busy")
+                    video_frame = client_engine.get("Video", {}).get("busy")
+
+                    if render_frame is not None:
+                        render[key].append(float(render_frame))
+
+                    if video_frame is not None:
+                        video[key].append(float(video_frame))
+
+        if render["global"]:
+            results["gpu"] = (
+                f"{round(((sum(render['global']) / len(render['global'])) + (sum(video['global']) / len(video['global']))) / 2, 2)}%"
+            )
+            results["mem"] = "-%"
+
+        if len(render.keys()) > 1:
+            results["clients"] = {}
+
+            for key in render.keys():
+                if key == "global" or not render[key] or not video[key]:
+                    continue
+
+                results["clients"][key] = (
+                    f"{round(((sum(render[key]) / len(render[key])) + (sum(video[key]) / len(video[key]))) / 2, 2)}%"
+                )
+
         return results
 
 
 def try_get_info(f, h, default="N/A"):
     try:
-        v = f(h)
+        if h:
+            v = f(h)
+        else:
+            v = f()
     except nvml.NVMLError_NotSupported:
         v = default
     return v
@@ -289,6 +398,10 @@ def get_nvidia_gpu_stats() -> dict[int, dict]:
             handle = nvml.nvmlDeviceGetHandleByIndex(i)
             meminfo = try_get_info(nvml.nvmlDeviceGetMemoryInfo, handle)
             util = try_get_info(nvml.nvmlDeviceGetUtilizationRates, handle)
+            enc = try_get_info(nvml.nvmlDeviceGetEncoderUtilization, handle)
+            dec = try_get_info(nvml.nvmlDeviceGetDecoderUtilization, handle)
+            pstate = try_get_info(nvml.nvmlDeviceGetPowerState, handle, default=None)
+
             if util != "N/A":
                 gpu_util = util.gpu
             else:
@@ -299,10 +412,23 @@ def get_nvidia_gpu_stats() -> dict[int, dict]:
             else:
                 gpu_mem_util = -1
 
+            if enc != "N/A":
+                enc_util = enc[0]
+            else:
+                enc_util = -1
+
+            if dec != "N/A":
+                dec_util = dec[0]
+            else:
+                dec_util = -1
+
             results[i] = {
                 "name": nvml.nvmlDeviceGetName(handle),
                 "gpu": gpu_util,
                 "mem": gpu_mem_util,
+                "enc": enc_util,
+                "dec": dec_util,
+                "pstate": pstate or "unknown",
             }
     except Exception:
         pass
@@ -325,11 +451,11 @@ def get_jetson_stats() -> dict[int, dict]:
     return results
 
 
-def ffprobe_stream(path: str) -> sp.CompletedProcess:
+def ffprobe_stream(ffmpeg, path: str) -> sp.CompletedProcess:
     """Run ffprobe on stream."""
     clean_path = escape_special_characters(path)
     ffprobe_cmd = [
-        "ffprobe",
+        ffmpeg.ffprobe_path,
         "-timeout",
         "1000000",
         "-print_format",
@@ -353,7 +479,66 @@ def vainfo_hwaccel(device_name: Optional[str] = None) -> sp.CompletedProcess:
     return sp.run(ffprobe_cmd, capture_output=True)
 
 
-async def get_video_properties(url, get_duration=False):
+def get_nvidia_driver_info() -> dict[str, any]:
+    """Get general hardware info for nvidia GPU."""
+    results = {}
+    try:
+        nvml.nvmlInit()
+        deviceCount = nvml.nvmlDeviceGetCount()
+        for i in range(deviceCount):
+            handle = nvml.nvmlDeviceGetHandleByIndex(i)
+            driver = try_get_info(nvml.nvmlSystemGetDriverVersion, None, default=None)
+            cuda_compute = try_get_info(
+                nvml.nvmlDeviceGetCudaComputeCapability, handle, default=None
+            )
+            vbios = try_get_info(nvml.nvmlDeviceGetVbiosVersion, handle, default=None)
+            results[i] = {
+                "name": nvml.nvmlDeviceGetName(handle),
+                "driver": driver or "unknown",
+                "cuda_compute": cuda_compute or "unknown",
+                "vbios": vbios or "unknown",
+            }
+    except Exception:
+        pass
+    finally:
+        return results
+
+
+def auto_detect_hwaccel() -> str:
+    """Detect hwaccel args by default."""
+    try:
+        cuda = False
+        vaapi = False
+        resp = requests.get("http://127.0.0.1:1984/api/ffmpeg/hardware", timeout=3)
+
+        if resp.status_code == 200:
+            data: dict[str, list[dict[str, str]]] = resp.json()
+            for source in data.get("sources", []):
+                if "cuda" in source.get("url", "") and source.get("name") == "OK":
+                    cuda = True
+
+                if "vaapi" in source.get("url", "") and source.get("name") == "OK":
+                    vaapi = True
+    except requests.RequestException:
+        pass
+
+    if cuda:
+        logger.info("Automatically detected nvidia hwaccel for video decoding")
+        return FFMPEG_HWACCEL_NVIDIA
+
+    if vaapi:
+        logger.info("Automatically detected vaapi hwaccel for video decoding")
+        return FFMPEG_HWACCEL_VAAPI
+
+    logger.warning(
+        "Did not detect hwaccel, using a GPU for accelerated video decoding is highly recommended"
+    )
+    return ""
+
+
+async def get_video_properties(
+    ffmpeg, url: str, get_duration: bool = False
+) -> dict[str, any]:
     async def calculate_duration(video: Optional[any]) -> float:
         duration = None
 
@@ -368,7 +553,7 @@ async def get_video_properties(url, get_duration=False):
         # if cv2 failed need to use ffprobe
         if duration is None:
             p = await asyncio.create_subprocess_exec(
-                "ffprobe",
+                ffmpeg.ffprobe_path,
                 "-v",
                 "error",
                 "-show_entries",
@@ -387,7 +572,10 @@ async def get_video_properties(url, get_duration=False):
                 result = None
 
             if result:
-                duration = float(result.strip())
+                try:
+                    duration = float(result.strip())
+                except ValueError:
+                    duration = -1
             else:
                 duration = -1
 
@@ -396,7 +584,7 @@ async def get_video_properties(url, get_duration=False):
     width = height = 0
 
     try:
-        # Open the video stream
+        # Open the video stream using OpenCV
         video = cv2.VideoCapture(url)
 
         # Check if the video stream was opened successfully
@@ -417,10 +605,20 @@ async def get_video_properties(url, get_duration=False):
         # Get the height of frames in the video stream
         height = video.get(cv2.CAP_PROP_FRAME_HEIGHT)
 
+        # Get the stream encoding
+        fourcc_int = int(video.get(cv2.CAP_PROP_FOURCC))
+        fourcc = (
+            chr((fourcc_int >> 0) & 255)
+            + chr((fourcc_int >> 8) & 255)
+            + chr((fourcc_int >> 16) & 255)
+            + chr((fourcc_int >> 24) & 255)
+        )
+
         # Release the video stream
         video.release()
 
         result["width"] = round(width)
         result["height"] = round(height)
+        result["fourcc"] = fourcc
 
     return result

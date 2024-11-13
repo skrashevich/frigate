@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+from pathlib import Path
 from typing import Any, List
 
 import cv2
@@ -36,6 +37,14 @@ class PlusApi:
         self.key = None
         if PLUS_ENV_VAR in os.environ:
             self.key = os.environ.get(PLUS_ENV_VAR)
+        elif (
+            os.path.isdir("/run/secrets")
+            and os.access("/run/secrets", os.R_OK)
+            and PLUS_ENV_VAR in os.listdir("/run/secrets")
+        ):
+            self.key = (
+                Path(os.path.join("/run/secrets", PLUS_ENV_VAR)).read_text().strip()
+            )
         # check for the addon options file
         elif os.path.isfile("/data/options.json"):
             with open("/data/options.json") as f:
@@ -166,6 +175,17 @@ class PlusApi:
         )
 
         if not r.ok:
+            try:
+                error_response = r.json()
+                errors = error_response.get("errors", [])
+                for error in errors:
+                    if (
+                        error.get("param") == "label"
+                        and error.get("type") == "invalid_enum_value"
+                    ):
+                        raise ValueError(f"Unsupported label value provided: {label}")
+            except ValueError as e:
+                raise e
             raise Exception(r.text)
 
     def add_annotation(
@@ -188,6 +208,17 @@ class PlusApi:
         )
 
         if not r.ok:
+            try:
+                error_response = r.json()
+                errors = error_response.get("errors", [])
+                for error in errors:
+                    if (
+                        error.get("param") == "label"
+                        and error.get("type") == "invalid_enum_value"
+                    ):
+                        raise ValueError(f"Unsupported label value provided: {label}")
+            except ValueError as e:
+                raise e
             raise Exception(r.text)
 
     def get_model_download_url(

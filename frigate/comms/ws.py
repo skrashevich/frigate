@@ -1,5 +1,6 @@
 """Websocket communicator."""
 
+import errno
 import json
 import logging
 import threading
@@ -12,7 +13,7 @@ from ws4py.server.wsgirefserver import (
     WSGIServer,
 )
 from ws4py.server.wsgiutils import WebSocketWSGIApplication
-from ws4py.websocket import WebSocket
+from ws4py.websocket import WebSocket as WebSocket_
 
 from frigate.comms.dispatcher import Communicator
 from frigate.config import FrigateConfig
@@ -20,11 +21,24 @@ from frigate.config import FrigateConfig
 logger = logging.getLogger(__name__)
 
 
+class WebSocket(WebSocket_):
+    def unhandled_error(self, error):
+        """
+        Handles the unfriendly socket closures on the server side
+        without showing a confusing error message
+        """
+        if hasattr(error, "errno") and error.errno == errno.ECONNRESET:
+            pass
+        else:
+            logging.getLogger("ws4py").exception("Failed to receive data")
+
+
 class WebSocketClient(Communicator):  # type: ignore[misc]
     """Frigate wrapper for ws client."""
 
     def __init__(self, config: FrigateConfig) -> None:
         self.config = config
+        self.websocket_server = None
 
     def subscribe(self, receiver: Callable) -> None:
         self._dispatcher = receiver
@@ -85,7 +99,14 @@ class WebSocketClient(Communicator):  # type: ignore[misc]
             logger.debug(f"payload for {topic} wasn't text. Skipping...")
             return
 
-        self.websocket_server.manager.broadcast(ws_message)
+        if self.websocket_server is None:
+            logger.debug("Skipping message, websocket not connected yet")
+            return
+
+        try:
+            self.websocket_server.manager.broadcast(ws_message)
+        except ConnectionResetError:
+            pass
 
     def stop(self) -> None:
         self.websocket_server.manager.close_all()

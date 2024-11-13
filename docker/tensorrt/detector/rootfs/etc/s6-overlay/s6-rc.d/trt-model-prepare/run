@@ -11,6 +11,7 @@ set -o errexit -o nounset -o pipefail
 MODEL_CACHE_DIR=${MODEL_CACHE_DIR:-"/config/model_cache/tensorrt"}
 TRT_VER=${TRT_VER:-$(cat /etc/TENSORRT_VER)}
 OUTPUT_FOLDER="${MODEL_CACHE_DIR}/${TRT_VER}"
+YOLO_MODELS=${YOLO_MODELS:-""}
 
 # Create output folder
 mkdir -p ${OUTPUT_FOLDER}
@@ -18,6 +19,11 @@ mkdir -p ${OUTPUT_FOLDER}
 FIRST_MODEL=true
 MODEL_DOWNLOAD=""
 MODEL_CONVERT=""
+
+if [ -z "$YOLO_MODELS"]; then
+    echo "tensorrt model preparation disabled"
+    exit 0
+fi
 
 for model in ${YOLO_MODELS//,/ }
 do
@@ -41,6 +47,15 @@ done
 if [[ -z ${MODEL_CONVERT} ]]; then
     echo "No models to convert."
     exit 0
+fi
+
+# Setup ENV to select GPU for conversion
+if [ ! -z ${TRT_MODEL_PREP_DEVICE+x} ]; then
+    if [ ! -z ${CUDA_VISIBLE_DEVICES+x} ]; then
+        PREVIOUS_CVD="$CUDA_VISIBLE_DEVICES"
+        unset CUDA_VISIBLE_DEVICES
+    fi
+    export CUDA_VISIBLE_DEVICES="$TRT_MODEL_PREP_DEVICE"
 fi
 
 # On Jetpack 4.6, the nvidia container runtime will mount several host nvidia libraries into the
@@ -87,5 +102,14 @@ do
     echo "Generated ${model}.trt in $(($(date +%s)-start)) seconds"
 done
 
+# Restore ENV after conversion
+if [ ! -z ${TRT_MODEL_PREP_DEVICE+x} ]; then
+    unset CUDA_VISIBLE_DEVICES
+    if [ ! -z ${PREVIOUS_CVD+x} ]; then
+        export CUDA_VISIBLE_DEVICES="$PREVIOUS_CVD"
+    fi
+fi
+
+# Print which models exist in output folder
 echo "Available tensorrt models:"
 cd ${OUTPUT_FOLDER} && ls *.trt;
