@@ -17,6 +17,7 @@ from ws4py.server.wsgirefserver import (
 )
 from ws4py.server.wsgiutils import WebSocketWSGIApplication
 
+from frigate.comms.config_updater import ConfigSubscriber
 from frigate.comms.detections_updater import DetectionSubscriber, DetectionTypeEnum
 from frigate.comms.ws import WebSocket
 from frigate.config import FrigateConfig
@@ -59,6 +60,12 @@ def output_frames(
 
     detection_subscriber = DetectionSubscriber(DetectionTypeEnum.video)
 
+    enabled_subscribers = {
+        camera: ConfigSubscriber(f"config/enabled/{camera}", True)
+        for camera in config.cameras.keys()
+        if config.cameras[camera].enabled_in_config
+    }
+
     jsmpeg_cameras: dict[str, JsmpegCamera] = {}
     birdseye: Optional[Birdseye] = None
     preview_recorders: dict[str, PreviewRecorder] = {}
@@ -80,6 +87,13 @@ def output_frames(
 
     websocket_thread.start()
 
+    def get_enabled_state(camera: str) -> bool:
+        _, config_data = enabled_subscribers[camera].check_for_update()
+        if config_data:
+            return config_data.enabled
+        # default
+        return config.cameras[camera].enabled
+
     while not stop_event.is_set():
         (topic, data) = detection_subscriber.check_for_update(timeout=1)
 
@@ -88,18 +102,20 @@ def output_frames(
 
         (
             camera,
+            frame_name,
             frame_time,
             current_tracked_objects,
             motion_boxes,
-            regions,
+            _,
         ) = data
 
-        frame_id = f"{camera}{frame_time}"
+        if not get_enabled_state(camera):
+            continue
 
-        frame = frame_manager.get(frame_id, config.cameras[camera].frame_shape_yuv)
+        frame = frame_manager.get(frame_name, config.cameras[camera].frame_shape_yuv)
 
         if frame is None:
-            logger.debug(f"Failed to get frame {frame_id} from SHM")
+            logger.debug(f"Failed to get frame {frame_name} from SHM")
             failed_frame_requests[camera] = failed_frame_requests.get(camera, 0) + 1
 
             if failed_frame_requests[camera] > config.cameras[camera].detect.fps:
@@ -152,7 +168,7 @@ def output_frames(
                     preview_recorders[camera].flag_offline(frame_time)
                     preview_write_times[camera] = frame_time
 
-        frame_manager.close(frame_id)
+        frame_manager.close(frame_name)
 
     move_preview_frames("clips")
 
@@ -164,15 +180,15 @@ def output_frames(
 
         (
             camera,
+            frame_name,
             frame_time,
             current_tracked_objects,
             motion_boxes,
             regions,
         ) = data
 
-        frame_id = f"{camera}{frame_time}"
-        frame = frame_manager.get(frame_id, config.cameras[camera].frame_shape_yuv)
-        frame_manager.close(frame_id)
+        frame = frame_manager.get(frame_name, config.cameras[camera].frame_shape_yuv)
+        frame_manager.close(frame_name)
 
     detection_subscriber.stop()
 
@@ -184,6 +200,9 @@ def output_frames(
 
     if birdseye is not None:
         birdseye.stop()
+
+    for subscriber in enabled_subscribers.values():
+        subscriber.stop()
 
     websocket_server.manager.close_all()
     websocket_server.manager.stop()

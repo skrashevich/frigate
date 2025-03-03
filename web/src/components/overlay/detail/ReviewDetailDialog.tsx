@@ -41,6 +41,7 @@ import { useOverlayState } from "@/hooks/use-overlay-state";
 import { DownloadVideoButton } from "@/components/button/DownloadVideoButton";
 import { TooltipPortal } from "@radix-ui/react-tooltip";
 import { LuSearch } from "react-icons/lu";
+import useKeyboardListener from "@/hooks/use-keyboard-listener";
 
 type ReviewDetailDialogProps = {
   review?: ReviewSegment;
@@ -72,6 +73,23 @@ export default function ReviewDetailDialog({
     }
 
     return events.length != review?.data.detections.length;
+  }, [review, events]);
+
+  const missingObjects = useMemo(() => {
+    if (!review || !events) {
+      return [];
+    }
+
+    const detectedIds = review.data.detections;
+    const missing = Array.from(
+      new Set(
+        events
+          .filter((event) => !detectedIds.includes(event.id))
+          .map((event) => event.label),
+      ),
+    );
+
+    return missing;
   }, [review, events]);
 
   const formattedDate = useFormattedTimestamp(
@@ -115,6 +133,14 @@ export default function ReviewDetailDialog({
     // we know that these deps are correct
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [review]);
+
+  // keyboard listener
+
+  useKeyboardListener(["Esc"], (key, modifiers) => {
+    if (key == "Esc" && modifiers.down && !modifiers.repeat) {
+      setIsOpen(false);
+    }
+  });
 
   const Overlay = isDesktop ? Sheet : MobilePage;
   const Content = isDesktop ? SheetContent : MobilePageContent;
@@ -263,8 +289,25 @@ export default function ReviewDetailDialog({
               </div>
               {hasMismatch && (
                 <div className="p-4 text-center text-sm">
-                  Some objects that were detected are not included in this list
-                  because the object does not have a snapshot
+                  {(() => {
+                    const detectedCount = Math.abs(
+                      (events?.length ?? 0) -
+                        (review?.data.detections.length ?? 0),
+                    );
+                    const objectLabel =
+                      detectedCount === 1 ? "object was" : "objects were";
+
+                    return `${detectedCount} unavailable ${objectLabel} detected and included in this review item.`;
+                  })()}{" "}
+                  Those objects either did not qualify as an alert or detection
+                  or have already been cleaned up/deleted.
+                  {missingObjects.length > 0 && (
+                    <div className="mt-2">
+                      Adjust your configuration if you want Frigate to save
+                      tracked objects for the following labels:{" "}
+                      {missingObjects.join(", ")}
+                    </div>
+                  )}
                 </div>
               )}
               <div className="relative flex size-full flex-col gap-2">
@@ -351,7 +394,7 @@ function EventItem({
           src={
             event.has_snapshot
               ? `${apiHost}api/events/${event.id}/snapshot.jpg`
-              : `${apiHost}api/events/${event.id}/thumbnail.jpg`
+              : `${apiHost}api/events/${event.id}/thumbnail.webp`
           }
         />
         {hovered && (
@@ -366,7 +409,7 @@ function EventItem({
                     href={
                       event.has_snapshot
                         ? `${apiHost}api/events/${event.id}/snapshot.jpg`
-                        : `${apiHost}api/events/${event.id}/thumbnail.jpg`
+                        : `${apiHost}api/events/${event.id}/thumbnail.webp`
                     }
                   >
                     <Chip className="cursor-pointer rounded-md bg-gray-500 bg-gradient-to-br from-gray-400 to-gray-500">
@@ -379,6 +422,7 @@ function EventItem({
 
               {event.has_snapshot &&
                 event.plus_id == undefined &&
+                event.data.type == "object" &&
                 config?.plus.enabled && (
                   <Tooltip>
                     <TooltipTrigger>

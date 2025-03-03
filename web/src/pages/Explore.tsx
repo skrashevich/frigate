@@ -1,6 +1,6 @@
 import {
   useEmbeddingsReindexProgress,
-  useEventUpdate,
+  useTrackedObjectUpdate,
   useModelState,
 } from "@/api/ws";
 import ActivityIndicator from "@/components/indicators/activity-indicator";
@@ -112,10 +112,13 @@ export default function Explore() {
           search_type: searchSearchParams["search_type"],
           min_score: searchSearchParams["min_score"],
           max_score: searchSearchParams["max_score"],
+          min_speed: searchSearchParams["min_speed"],
+          max_speed: searchSearchParams["max_speed"],
           has_snapshot: searchSearchParams["has_snapshot"],
           is_submitted: searchSearchParams["is_submitted"],
           has_clip: searchSearchParams["has_clip"],
           event_id: searchSearchParams["event_id"],
+          sort: searchSearchParams["sort"],
           limit:
             Object.keys(searchSearchParams).length == 0 ? API_LIMIT : undefined,
           timezone,
@@ -144,10 +147,13 @@ export default function Explore() {
         search_type: searchSearchParams["search_type"],
         min_score: searchSearchParams["min_score"],
         max_score: searchSearchParams["max_score"],
+        min_speed: searchSearchParams["min_speed"],
+        max_speed: searchSearchParams["max_speed"],
         has_snapshot: searchSearchParams["has_snapshot"],
         is_submitted: searchSearchParams["is_submitted"],
         has_clip: searchSearchParams["has_clip"],
         event_id: searchSearchParams["event_id"],
+        sort: searchSearchParams["sort"],
         timezone,
         include_thumbnails: 0,
       },
@@ -165,12 +171,17 @@ export default function Explore() {
 
     const [url, params] = searchQuery;
 
-    // If it's not the first page, use the last item's start_time as the 'before' parameter
+    const isAscending = params.sort?.includes("date_asc");
+
     if (pageIndex > 0 && previousPageData) {
       const lastDate = previousPageData[previousPageData.length - 1].start_time;
       return [
         url,
-        { ...params, before: lastDate.toString(), limit: API_LIMIT },
+        {
+          ...params,
+          [isAscending ? "after" : "before"]: lastDate.toString(),
+          limit: API_LIMIT,
+        },
       ];
     }
 
@@ -227,15 +238,15 @@ export default function Explore() {
 
   // mutation and revalidation
 
-  const eventUpdate = useEventUpdate();
+  const trackedObjectUpdate = useTrackedObjectUpdate();
 
   useEffect(() => {
-    if (eventUpdate) {
+    if (trackedObjectUpdate) {
       mutate();
     }
     // mutate / revalidate when event description updates come in
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventUpdate]);
+  }, [trackedObjectUpdate]);
 
   // embeddings reindex progress
 
@@ -256,20 +267,41 @@ export default function Explore() {
 
   // model states
 
-  const { payload: textModelState } = useModelState(
-    "jinaai/jina-clip-v1-text_model_fp16.onnx",
-  );
-  const { payload: textTokenizerState } = useModelState(
-    "jinaai/jina-clip-v1-tokenizer",
-  );
-  const modelFile =
-    config?.semantic_search.model_size === "large"
-      ? "jinaai/jina-clip-v1-vision_model_fp16.onnx"
-      : "jinaai/jina-clip-v1-vision_model_quantized.onnx";
+  const modelVersion = config?.semantic_search.model || "jinav1";
+  const modelSize = config?.semantic_search.model_size || "small";
 
-  const { payload: visionModelState } = useModelState(modelFile);
+  // Text model state
+  const { payload: textModelState } = useModelState(
+    modelVersion === "jinav1"
+      ? "jinaai/jina-clip-v1-text_model_fp16.onnx"
+      : modelSize === "large"
+        ? "jinaai/jina-clip-v2-model_fp16.onnx"
+        : "jinaai/jina-clip-v2-model_quantized.onnx",
+  );
+
+  // Tokenizer state
+  const { payload: textTokenizerState } = useModelState(
+    modelVersion === "jinav1"
+      ? "jinaai/jina-clip-v1-tokenizer"
+      : "jinaai/jina-clip-v2-tokenizer",
+  );
+
+  // Vision model state (same as text model for jinav2)
+  const visionModelFile =
+    modelVersion === "jinav1"
+      ? modelSize === "large"
+        ? "jinaai/jina-clip-v1-vision_model_fp16.onnx"
+        : "jinaai/jina-clip-v1-vision_model_quantized.onnx"
+      : modelSize === "large"
+        ? "jinaai/jina-clip-v2-model_fp16.onnx"
+        : "jinaai/jina-clip-v2-model_quantized.onnx";
+  const { payload: visionModelState } = useModelState(visionModelFile);
+
+  // Preprocessor/feature extractor state
   const { payload: visionFeatureExtractorState } = useModelState(
-    "jinaai/jina-clip-v1-preprocessor_config.json",
+    modelVersion === "jinav1"
+      ? "jinaai/jina-clip-v1-preprocessor_config.json"
+      : "jinaai/jina-clip-v2-preprocessor_config.json",
   );
 
   const allModelsLoaded = useMemo(() => {
@@ -321,12 +353,12 @@ export default function Explore() {
           <div className="flex max-w-96 flex-col items-center justify-center space-y-3 rounded-lg bg-background/50 p-5">
             <div className="my-5 flex flex-col items-center gap-2 text-xl">
               <TbExclamationCircle className="mb-3 size-10" />
-              <div>Search Unavailable</div>
+              <div>Explore is Unavailable</div>
             </div>
             {embeddingsReindexing && allModelsLoaded && (
               <>
                 <div className="text-center text-primary-variant">
-                  Search can be used after tracked object embeddings have
+                  Explore can be used after tracked object embeddings have
                   finished reindexing.
                 </div>
                 <div className="pt-5 text-center">
@@ -377,8 +409,8 @@ export default function Explore() {
               <>
                 <div className="text-center text-primary-variant">
                   Frigate is downloading the necessary embeddings models to
-                  support semantic searching. This may take several minutes
-                  depending on the speed of your network connection.
+                  support the Semantic Search feature. This may take several
+                  minutes depending on the speed of your network connection.
                 </div>
                 <div className="flex w-96 flex-col gap-2 py-5">
                   <div className="flex flex-row items-center justify-center gap-2">
