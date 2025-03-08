@@ -4,7 +4,8 @@ import { FrigateConfig } from "@/types/frigateConfig";
 import { baseUrl } from "@/api/baseUrl";
 import { toast } from "sonner";
 import axios from "axios";
-import { LuCamera, LuDownload, LuMoreVertical, LuTrash2 } from "react-icons/lu";
+import { LuCamera, LuDownload, LuTrash2 } from "react-icons/lu";
+import { FiMoreVertical } from "react-icons/fi";
 import { FaArrowsRotate } from "react-icons/fa6";
 import { MdImageSearch } from "react-icons/md";
 import FrigatePlusIcon from "@/components/icons/FrigatePlusIcon";
@@ -73,8 +74,12 @@ export default function SearchResultActions({
           refreshResults();
         }
       })
-      .catch(() => {
-        toast.error("Failed to delete tracked object.", {
+      .catch((error) => {
+        const errorMessage =
+          error.response?.data?.message ||
+          error.response?.data?.detail ||
+          "Unknown error";
+        toast.error(`Failed to delete tracked object: ${errorMessage}`, {
           position: "top-center",
         });
       });
@@ -108,13 +113,15 @@ export default function SearchResultActions({
           </a>
         </MenuItem>
       )}
-      <MenuItem
-        aria-label="Show the object lifecycle"
-        onClick={showObjectLifecycle}
-      >
-        <FaArrowsRotate className="mr-2 size-4" />
-        <span>View object lifecycle</span>
-      </MenuItem>
+      {searchResult.data.type == "object" && (
+        <MenuItem
+          aria-label="Show the object lifecycle"
+          onClick={showObjectLifecycle}
+        >
+          <FaArrowsRotate className="mr-2 size-4" />
+          <span>View object lifecycle</span>
+        </MenuItem>
+      )}
       {config?.semantic_search?.enabled && isContextMenu && (
         <MenuItem
           aria-label="Find similar tracked objects"
@@ -128,6 +135,7 @@ export default function SearchResultActions({
         config?.plus?.enabled &&
         searchResult.has_snapshot &&
         searchResult.end_time &&
+        searchResult.data.type == "object" &&
         !searchResult.plus_id && (
           <MenuItem aria-label="Submit to Frigate Plus" onClick={showSnapshot}>
             <FrigatePlusIcon className="mr-2 size-4 cursor-pointer text-primary" />
@@ -181,22 +189,24 @@ export default function SearchResultActions({
         </ContextMenu>
       ) : (
         <>
-          {config?.semantic_search?.enabled && (
-            <Tooltip>
-              <TooltipTrigger>
-                <MdImageSearch
-                  className="size-5 cursor-pointer text-primary-variant hover:text-primary"
-                  onClick={findSimilar}
-                />
-              </TooltipTrigger>
-              <TooltipContent>Find similar</TooltipContent>
-            </Tooltip>
-          )}
+          {config?.semantic_search?.enabled &&
+            searchResult.data.type == "object" && (
+              <Tooltip>
+                <TooltipTrigger>
+                  <MdImageSearch
+                    className="size-5 cursor-pointer text-primary-variant hover:text-primary"
+                    onClick={findSimilar}
+                  />
+                </TooltipTrigger>
+                <TooltipContent>Find similar</TooltipContent>
+              </Tooltip>
+            )}
 
           {!isMobileOnly &&
             config?.plus?.enabled &&
             searchResult.has_snapshot &&
             searchResult.end_time &&
+            searchResult.data.type == "object" &&
             !searchResult.plus_id && (
               <Tooltip>
                 <TooltipTrigger>
@@ -211,7 +221,7 @@ export default function SearchResultActions({
 
           <DropdownMenu>
             <DropdownMenuTrigger>
-              <LuMoreVertical className="size-5 cursor-pointer text-primary-variant hover:text-primary" />
+              <FiMoreVertical className="size-5 cursor-pointer text-primary-variant hover:text-primary" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">{menuItems}</DropdownMenuContent>
           </DropdownMenu>

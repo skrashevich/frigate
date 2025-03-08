@@ -91,7 +91,7 @@ export default function SearchSettingsView({
       )
       .then((res) => {
         if (res.status === 200) {
-          toast.success("Search settings have been saved.", {
+          toast.success("Explore settings have been saved.", {
             position: "top-center",
           });
           setChangedValue(false);
@@ -103,10 +103,13 @@ export default function SearchSettingsView({
         }
       })
       .catch((error) => {
-        toast.error(
-          `Failed to save config changes: ${error.response.data.message}`,
-          { position: "top-center" },
-        );
+        const errorMessage =
+          error.response?.data?.message ||
+          error.response?.data?.detail ||
+          "Unknown error";
+        toast.error(`Failed to save config changes: ${errorMessage}`, {
+          position: "top-center",
+        });
       })
       .finally(() => {
         setIsLoading(false);
@@ -128,7 +131,7 @@ export default function SearchSettingsView({
     if (changedValue) {
       addMessage(
         "search_settings",
-        `Unsaved search settings changes`,
+        `Unsaved Explore settings changes`,
         undefined,
         "search_settings",
       );
@@ -140,7 +143,7 @@ export default function SearchSettingsView({
   }, [changedValue]);
 
   useEffect(() => {
-    document.title = "Search Settings - Frigate";
+    document.title = "Explore Settings - Frigate";
   }, []);
 
   if (!config) {
@@ -152,7 +155,7 @@ export default function SearchSettingsView({
       <Toaster position="top-center" closeButton={true} />
       <div className="scrollbar-container order-last mb-10 mt-2 flex h-full w-full flex-col overflow-y-auto rounded-lg border-[1px] border-secondary-foreground bg-background_alt p-2 md:order-none md:mb-0 md:mr-2 md:mt-0">
         <Heading as="h3" className="my-2">
-          Search Settings
+          Explore Settings
         </Heading>
         <Separator className="my-2 flex bg-secondary" />
         <Heading as="h4" className="my-2">
@@ -221,7 +224,7 @@ export default function SearchSettingsView({
               <div className="text-md">Model Size</div>
               <div className="space-y-1 text-sm text-muted-foreground">
                 <p>
-                  The size of the model used for semantic search embeddings.
+                  The size of the model used for Semantic Search embeddings.
                 </p>
                 <ul className="list-disc pl-5 text-sm">
                   <li>

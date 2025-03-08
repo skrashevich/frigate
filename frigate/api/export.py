@@ -6,11 +6,14 @@ import string
 from pathlib import Path
 
 import psutil
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from peewee import DoesNotExist
+from playhouse.shortcuts import model_to_dict
 
+from frigate.api.auth import require_role
 from frigate.api.defs.request.export_recordings_body import ExportRecordingsBody
+from frigate.api.defs.request.export_rename_body import ExportRenameBody
 from frigate.api.defs.tags import Tags
 from frigate.const import EXPORT_DIR
 from frigate.models import Export, Previews, Recordings
@@ -128,8 +131,10 @@ def export_recording(
     )
 
 
-@router.patch("/export/{event_id}/{new_name}")
-def export_rename(event_id: str, new_name: str):
+@router.patch(
+    "/export/{event_id}/rename", dependencies=[Depends(require_role(["admin"]))]
+)
+def export_rename(event_id: str, body: ExportRenameBody):
     try:
         export: Export = Export.get(Export.id == event_id)
     except DoesNotExist:
@@ -143,7 +148,7 @@ def export_rename(event_id: str, new_name: str):
             status_code=404,
         )
 
-    export.name = new_name
+    export.name = body.name
     export.save()
     return JSONResponse(
         content=(
@@ -156,7 +161,7 @@ def export_rename(event_id: str, new_name: str):
     )
 
 
-@router.delete("/export/{event_id}")
+@router.delete("/export/{event_id}", dependencies=[Depends(require_role(["admin"]))])
 def export_delete(event_id: str):
     try:
         export: Export = Export.get(Export.id == event_id)
@@ -207,3 +212,14 @@ def export_delete(event_id: str):
         ),
         status_code=200,
     )
+
+
+@router.get("/exports/{export_id}")
+def get_export(export_id: str):
+    try:
+        return JSONResponse(content=model_to_dict(Export.get(Export.id == export_id)))
+    except DoesNotExist:
+        return JSONResponse(
+            content={"success": False, "message": "Export not found"},
+            status_code=404,
+        )

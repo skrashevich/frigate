@@ -17,9 +17,8 @@ from frigate.detectors.detector_config import (
     InputDTypeEnum,
     InputTensorEnum,
 )
-from frigate.detectors.plugins.rocm import DETECTOR_KEY as ROCM_DETECTOR_KEY
 from frigate.util.builtin import EventsPerSecond, load_labels
-from frigate.util.image import SharedMemoryFrameManager
+from frigate.util.image import SharedMemoryFrameManager, UntrackedSharedMemory
 from frigate.util.services import listen
 
 logger = logging.getLogger(__name__)
@@ -52,13 +51,7 @@ class LocalObjectDetector(ObjectDetector):
             self.labels = load_labels(labels)
 
         if detector_config:
-            if detector_config.type == ROCM_DETECTOR_KEY:
-                # ROCm requires NHWC as input
-                self.input_transform = None
-            else:
-                self.input_transform = tensor_transform(
-                    detector_config.model.input_tensor
-                )
+            self.input_transform = tensor_transform(detector_config.model.input_tensor)
 
             self.dtype = detector_config.model.input_dtype
         else:
@@ -122,7 +115,7 @@ def run_detector(
 
     outputs = {}
     for name in out_events.keys():
-        out_shm = mp.shared_memory.SharedMemory(name=f"out-{name}", create=False)
+        out_shm = UntrackedSharedMemory(name=f"out-{name}", create=False)
         out_np = np.ndarray((20, 6), dtype=np.float32, buffer=out_shm.buf)
         outputs[name] = {"shm": out_shm, "np": out_np}
 
@@ -212,15 +205,13 @@ class RemoteObjectDetector:
         self.detection_queue = detection_queue
         self.event = event
         self.stop_event = stop_event
-        self.shm = mp.shared_memory.SharedMemory(name=self.name, create=False)
+        self.shm = UntrackedSharedMemory(name=self.name, create=False)
         self.np_shm = np.ndarray(
             (1, model_config.height, model_config.width, 3),
             dtype=np.uint8,
             buffer=self.shm.buf,
         )
-        self.out_shm = mp.shared_memory.SharedMemory(
-            name=f"out-{self.name}", create=False
-        )
+        self.out_shm = UntrackedSharedMemory(name=f"out-{self.name}", create=False)
         self.out_np_shm = np.ndarray((20, 6), dtype=np.float32, buffer=self.out_shm.buf)
 
     def detect(self, tensor_input, threshold=0.4):

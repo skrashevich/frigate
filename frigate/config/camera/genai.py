@@ -16,6 +16,17 @@ class GenAIProviderEnum(str, Enum):
     ollama = "ollama"
 
 
+class GenAISendTriggersConfig(BaseModel):
+    tracked_object_end: bool = Field(
+        default=True, title="Send once the object is no longer tracked."
+    )
+    after_significant_updates: Optional[int] = Field(
+        default=None,
+        title="Send an early request to generative AI when X frames accumulated.",
+        ge=1,
+    )
+
+
 # uses BaseModel because some global attributes are not available at the camera level
 class GenAICameraConfig(BaseModel):
     enabled: bool = Field(default=False, title="Enable GenAI for camera.")
@@ -37,6 +48,14 @@ class GenAICameraConfig(BaseModel):
     required_zones: Union[str, list[str]] = Field(
         default_factory=list,
         title="List of required zones to be entered in order to run generative AI.",
+    )
+    debug_save_thumbnails: bool = Field(
+        default=False,
+        title="Save thumbnails sent to generative AI for debugging purposes.",
+    )
+    send_triggers: GenAISendTriggersConfig = Field(
+        default_factory=GenAISendTriggersConfig,
+        title="What triggers to use to send frames to generative AI for a tracked object.",
     )
 
     @field_validator("required_zones", mode="before")

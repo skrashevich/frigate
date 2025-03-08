@@ -3,7 +3,7 @@ import { isDesktop, isIOS, isMobileOnly, isSafari } from "react-device-detect";
 import useSWR from "swr";
 import { useApiHost } from "@/api";
 import { cn } from "@/lib/utils";
-import { LuArrowRightCircle } from "react-icons/lu";
+import { BsArrowRightCircle } from "react-icons/bs";
 import { useNavigate } from "react-router-dom";
 import {
   Tooltip,
@@ -15,7 +15,7 @@ import { SearchResult } from "@/types/search";
 import ImageLoadingIndicator from "@/components/indicators/ImageLoadingIndicator";
 import useImageLoaded from "@/hooks/use-image-loaded";
 import ActivityIndicator from "@/components/indicators/activity-indicator";
-import { useEventUpdate } from "@/api/ws";
+import { useTrackedObjectUpdate } from "@/api/ws";
 import { isEqual } from "lodash";
 import TimeAgo from "@/components/dynamic/TimeAgo";
 import SearchResultActions from "@/components/menu/SearchResultActions";
@@ -26,7 +26,7 @@ type ExploreViewProps = {
   searchDetail: SearchResult | undefined;
   setSearchDetail: (search: SearchResult | undefined) => void;
   setSimilaritySearch: (search: SearchResult) => void;
-  onSelectSearch: (item: SearchResult, index: number, page?: SearchTab) => void;
+  onSelectSearch: (item: SearchResult, ctrl: boolean, page?: SearchTab) => void;
 };
 
 export default function ExploreView({
@@ -72,13 +72,13 @@ export default function ExploreView({
     }, {});
   }, [events]);
 
-  const eventUpdate = useEventUpdate();
+  const trackedObjectUpdate = useTrackedObjectUpdate();
 
   useEffect(() => {
     mutate();
     // mutate / revalidate when event description updates come in
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventUpdate]);
+  }, [trackedObjectUpdate]);
 
   // update search detail when results change
 
@@ -125,7 +125,7 @@ type ThumbnailRowType = {
   setSearchDetail: (search: SearchResult | undefined) => void;
   mutate: () => void;
   setSimilaritySearch: (search: SearchResult) => void;
-  onSelectSearch: (item: SearchResult, index: number, page?: SearchTab) => void;
+  onSelectSearch: (item: SearchResult, ctrl: boolean, page?: SearchTab) => void;
 };
 
 function ThumbnailRow({
@@ -183,7 +183,7 @@ function ThumbnailRow({
         >
           <Tooltip>
             <TooltipTrigger>
-              <LuArrowRightCircle
+              <BsArrowRightCircle
                 className="ml-2 text-secondary-foreground transition-all duration-300 hover:text-primary"
                 size={24}
               />
@@ -205,7 +205,7 @@ type ExploreThumbnailImageProps = {
   setSearchDetail: (search: SearchResult | undefined) => void;
   mutate: () => void;
   setSimilaritySearch: (search: SearchResult) => void;
-  onSelectSearch: (item: SearchResult, index: number, page?: SearchTab) => void;
+  onSelectSearch: (item: SearchResult, ctrl: boolean, page?: SearchTab) => void;
 };
 function ExploreThumbnailImage({
   event,
@@ -225,11 +225,11 @@ function ExploreThumbnailImage({
   };
 
   const handleShowObjectLifecycle = () => {
-    onSelectSearch(event, 0, "object lifecycle");
+    onSelectSearch(event, false, "object lifecycle");
   };
 
   const handleShowSnapshot = () => {
-    onSelectSearch(event, 0, "snapshot");
+    onSelectSearch(event, false, "snapshot");
   };
 
   return (
@@ -262,7 +262,7 @@ function ExploreThumbnailImage({
           }
           loading={isSafari ? "eager" : "lazy"}
           draggable={false}
-          src={`${apiHost}api/events/${event.id}/thumbnail.jpg`}
+          src={`${apiHost}api/events/${event.id}/thumbnail.webp`}
           onClick={() => setSearchDetail(event)}
           onLoad={onImgLoad}
           alt={`${event.label} thumbnail`}

@@ -25,6 +25,7 @@ import { baseUrl } from "@/api/baseUrl";
 import { cn } from "@/lib/utils";
 import ActivityIndicator from "@/components/indicators/activity-indicator";
 import {
+  FaArrowRight,
   FaCheckCircle,
   FaChevronDown,
   FaDownload,
@@ -70,6 +71,8 @@ import {
 } from "@/components/ui/popover";
 import { LuInfo } from "react-icons/lu";
 import { TooltipPortal } from "@radix-ui/react-tooltip";
+import { FaPencilAlt } from "react-icons/fa";
+import TextEntryDialog from "@/components/overlay/dialog/TextEntryDialog";
 
 const SEARCH_TABS = [
   "details",
@@ -85,6 +88,7 @@ type SearchDetailDialogProps = {
   setSearch: (search: SearchResult | undefined) => void;
   setSearchPage: (page: SearchTab) => void;
   setSimilarity?: () => void;
+  setInputFocused: React.Dispatch<React.SetStateAction<boolean>>;
 };
 export default function SearchDetailDialog({
   search,
@@ -92,6 +96,7 @@ export default function SearchDetailDialog({
   setSearch,
   setSearchPage,
   setSimilarity,
+  setInputFocused,
 }: SearchDetailDialogProps) {
   const { data: config } = useSWR<FrigateConfig>("config", {
     revalidateOnFocus: false,
@@ -232,6 +237,7 @@ export default function SearchDetailDialog({
             config={config}
             setSearch={setSearch}
             setSimilarity={setSimilarity}
+            setInputFocused={setInputFocused}
           />
         )}
         {page == "snapshot" && (
@@ -266,12 +272,14 @@ type ObjectDetailsTabProps = {
   config?: FrigateConfig;
   setSearch: (search: SearchResult | undefined) => void;
   setSimilarity?: () => void;
+  setInputFocused: React.Dispatch<React.SetStateAction<boolean>>;
 };
 function ObjectDetailsTab({
   search,
   config,
   setSearch,
   setSimilarity,
+  setInputFocused,
 }: ObjectDetailsTabProps) {
   const apiHost = useApiHost();
 
@@ -282,6 +290,15 @@ function ObjectDetailsTab({
   // data
 
   const [desc, setDesc] = useState(search?.data.description);
+  const [isSubLabelDialogOpen, setIsSubLabelDialogOpen] = useState(false);
+
+  const handleDescriptionFocus = useCallback(() => {
+    setInputFocused(true);
+  }, [setInputFocused]);
+
+  const handleDescriptionBlur = useCallback(() => {
+    setInputFocused(false);
+  }, [setInputFocused]);
 
   // we have to make sure the current selected search item stays in sync
   useEffect(() => setDesc(search?.data.description ?? ""), [search]);
@@ -309,8 +326,32 @@ function ObjectDetailsTab({
       return undefined;
     }
 
-    if (search.sub_label) {
+    if (search.sub_label && search.data?.sub_label_score) {
       return Math.round((search.data?.sub_label_score ?? 0) * 100);
+    } else {
+      return undefined;
+    }
+  }, [search]);
+
+  const averageEstimatedSpeed = useMemo(() => {
+    if (!search || !search.data?.average_estimated_speed) {
+      return undefined;
+    }
+
+    if (search.data?.average_estimated_speed != 0) {
+      return search.data?.average_estimated_speed.toFixed(1);
+    } else {
+      return undefined;
+    }
+  }, [search]);
+
+  const velocityAngle = useMemo(() => {
+    if (!search || !search.data?.velocity_angle) {
+      return undefined;
+    }
+
+    if (search.data?.velocity_angle != 0) {
+      return search.data?.velocity_angle.toFixed(1);
     } else {
       return undefined;
     }
@@ -353,8 +394,12 @@ function ObjectDetailsTab({
           },
         );
       })
-      .catch(() => {
-        toast.error("Failed to update the description", {
+      .catch((error) => {
+        const errorMessage =
+          error.response?.data?.message ||
+          error.response?.data?.detail ||
+          "Unknown error";
+        toast.error(`Failed to update the description: ${errorMessage}`, {
           position: "top-center",
         });
         setDesc(search.data.description);
@@ -381,15 +426,89 @@ function ObjectDetailsTab({
           }
         })
         .catch((error) => {
+          const errorMessage =
+            error.response?.data?.message ||
+            error.response?.data?.detail ||
+            "Unknown error";
           toast.error(
-            `Failed to call ${capitalizeAll(config?.genai.provider.replaceAll("_", " ") ?? "Generative AI")} for a new description: ${error.response.data.message}`,
-            {
-              position: "top-center",
-            },
+            `Failed to call ${capitalizeAll(config?.genai.provider.replaceAll("_", " ") ?? "Generative AI")} for a new description: ${errorMessage}`,
+            { position: "top-center" },
           );
         });
     },
     [search, config],
+  );
+
+  const handleSubLabelSave = useCallback(
+    (text: string) => {
+      if (!search) return;
+
+      // set score to 1.0 if we're manually entering a sub label
+      const subLabelScore =
+        text === "" ? undefined : search.data?.sub_label_score || 1.0;
+
+      axios
+        .post(`${apiHost}api/events/${search.id}/sub_label`, {
+          camera: search.camera,
+          subLabel: text,
+          subLabelScore: subLabelScore,
+        })
+        .then((response) => {
+          if (response.status === 200) {
+            toast.success("Successfully updated sub label.", {
+              position: "top-center",
+            });
+
+            mutate(
+              (key) =>
+                typeof key === "string" &&
+                (key.includes("events") ||
+                  key.includes("events/search") ||
+                  key.includes("events/explore")),
+              (currentData: SearchResult[][] | SearchResult[] | undefined) => {
+                if (!currentData) return currentData;
+                return currentData.flat().map((event) =>
+                  event.id === search.id
+                    ? {
+                        ...event,
+                        sub_label: text,
+                        data: {
+                          ...event.data,
+                          sub_label_score: subLabelScore,
+                        },
+                      }
+                    : event,
+                );
+              },
+              {
+                optimisticData: true,
+                rollbackOnError: true,
+                revalidate: false,
+              },
+            );
+
+            setSearch({
+              ...search,
+              sub_label: text,
+              data: {
+                ...search.data,
+                sub_label_score: subLabelScore,
+              },
+            });
+            setIsSubLabelDialogOpen(false);
+          }
+        })
+        .catch((error) => {
+          const errorMessage =
+            error.response?.data?.message ||
+            error.response?.data?.detail ||
+            "Unknown error";
+          toast.error(`Failed to update sub label: ${errorMessage}`, {
+            position: "top-center",
+          });
+        });
+    },
+    [search, apiHost, mutate, setSearch],
   );
 
   return (
@@ -402,6 +521,21 @@ function ObjectDetailsTab({
               {getIconForLabel(search.label, "size-4 text-primary")}
               {search.label}
               {search.sub_label && ` (${search.sub_label})`}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <FaPencilAlt
+                      className="size-4 cursor-pointer text-primary/40 hover:text-primary/80"
+                      onClick={() => {
+                        setIsSubLabelDialogOpen(true);
+                      }}
+                    />
+                  </span>
+                </TooltipTrigger>
+                <TooltipPortal>
+                  <TooltipContent>Edit sub label</TooltipContent>
+                </TooltipPortal>
+              </Tooltip>
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -427,6 +561,29 @@ function ObjectDetailsTab({
               {score}%{subLabelScore && ` (${subLabelScore}%)`}
             </div>
           </div>
+          {averageEstimatedSpeed && (
+            <div className="flex flex-col gap-1.5">
+              <div className="text-sm text-primary/40">Estimated Speed</div>
+              <div className="flex flex-col space-y-0.5 text-sm">
+                {averageEstimatedSpeed && (
+                  <div className="flex flex-row items-center gap-2">
+                    {averageEstimatedSpeed}{" "}
+                    {config?.ui.unit_system == "imperial" ? "mph" : "kph"}{" "}
+                    {velocityAngle != undefined && (
+                      <span className="text-primary/40">
+                        <FaArrowRight
+                          size={10}
+                          style={{
+                            transform: `rotate(${(360 - Number(velocityAngle)) % 360}deg)`,
+                          }}
+                        />
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <div className="text-sm text-primary/40">Camera</div>
             <div className="text-sm capitalize">
@@ -450,9 +607,9 @@ function ObjectDetailsTab({
                 : undefined
             }
             draggable={false}
-            src={`${apiHost}api/events/${search.id}/thumbnail.jpg`}
+            src={`${apiHost}api/events/${search.id}/thumbnail.webp`}
           />
-          {config?.semantic_search.enabled && (
+          {config?.semantic_search.enabled && search.data.type == "object" && (
             <Button
               aria-label="Find similar tracked objects"
               onClick={() => {
@@ -469,16 +626,45 @@ function ObjectDetailsTab({
         </div>
       </div>
       <div className="flex flex-col gap-1.5">
-        <div className="text-sm text-primary/40">Description</div>
-        <Textarea
-          className="h-64"
-          placeholder="Description of the tracked object"
-          value={desc}
-          onChange={(e) => setDesc(e.target.value)}
-        />
+        {config?.cameras[search.camera].genai.enabled &&
+        !search.end_time &&
+        (config.cameras[search.camera].genai.required_zones.length === 0 ||
+          search.zones.some((zone) =>
+            config.cameras[search.camera].genai.required_zones.includes(zone),
+          )) &&
+        (config.cameras[search.camera].genai.objects.length === 0 ||
+          config.cameras[search.camera].genai.objects.includes(
+            search.label,
+          )) ? (
+          <>
+            <div className="text-sm text-primary/40">Description</div>
+            <div className="flex h-64 flex-col items-center justify-center gap-3 border p-4 text-sm text-primary/40">
+              <div className="flex">
+                <ActivityIndicator />
+              </div>
+              <div className="flex">
+                Frigate will not request a description from your Generative AI
+                provider until the tracked object's lifecycle has ended.
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-sm text-primary/40">Description</div>
+            <Textarea
+              className="h-64"
+              placeholder="Description of the tracked object"
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              onFocus={handleDescriptionFocus}
+              onBlur={handleDescriptionBlur}
+            />
+          </>
+        )}
+
         <div className="flex w-full flex-row justify-end gap-2">
-          {config?.cameras[search.camera].genai.enabled && (
-            <div className="flex items-center">
+          {config?.cameras[search.camera].genai.enabled && search.end_time && (
+            <div className="flex items-start">
               <Button
                 className="rounded-r-none border-r-0"
                 aria-label="Regenerate tracked object description"
@@ -516,13 +702,25 @@ function ObjectDetailsTab({
               )}
             </div>
           )}
-          <Button
-            variant="select"
-            aria-label="Save"
-            onClick={updateDescription}
-          >
-            Save
-          </Button>
+          {((config?.cameras[search.camera].genai.enabled && search.end_time) ||
+            !config?.cameras[search.camera].genai.enabled) && (
+            <Button
+              variant="select"
+              aria-label="Save"
+              onClick={updateDescription}
+            >
+              Save
+            </Button>
+          )}
+          <TextEntryDialog
+            open={isSubLabelDialogOpen}
+            setOpen={setIsSubLabelDialogOpen}
+            title="Edit Sub Label"
+            description={`Enter a new sub label for this ${search.label ?? "tracked object"}.`}
+            onSave={handleSubLabelSave}
+            defaultValue={search?.sub_label || ""}
+            allowEmpty={true}
+          />
         </div>
       </div>
     </div>
@@ -626,65 +824,68 @@ export function ObjectSnapshotTab({
                 </div>
               )}
             </TransformComponent>
-            {search.plus_id !== "not_enabled" && search.end_time && (
-              <Card className="p-1 text-sm md:p-2">
-                <CardContent className="flex flex-col items-center justify-between gap-3 p-2 md:flex-row">
-                  <div className={cn("flex flex-col space-y-3")}>
-                    <div
-                      className={
-                        "text-lg font-semibold leading-none tracking-tight"
-                      }
-                    >
-                      Submit To Frigate+
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Objects in locations you want to avoid are not false
-                      positives. Submitting them as false positives will confuse
-                      the model.
-                    </div>
-                  </div>
-
-                  <div className="flex flex-row justify-center gap-2 md:justify-end">
-                    {state == "reviewing" && (
-                      <>
-                        <Button
-                          className="bg-success"
-                          aria-label="Confirm this label for Frigate Plus"
-                          onClick={() => {
-                            setState("uploading");
-                            onSubmitToPlus(false);
-                          }}
-                        >
-                          This is{" "}
-                          {/^[aeiou]/i.test(search?.label || "") ? "an" : "a"}{" "}
-                          {search?.label}
-                        </Button>
-                        <Button
-                          className="text-white"
-                          aria-label="Do not confirm this label for Frigate Plus"
-                          variant="destructive"
-                          onClick={() => {
-                            setState("uploading");
-                            onSubmitToPlus(true);
-                          }}
-                        >
-                          This is not{" "}
-                          {/^[aeiou]/i.test(search?.label || "") ? "an" : "a"}{" "}
-                          {search?.label}
-                        </Button>
-                      </>
-                    )}
-                    {state == "uploading" && <ActivityIndicator />}
-                    {state == "submitted" && (
-                      <div className="flex flex-row items-center justify-center gap-2">
-                        <FaCheckCircle className="text-success" />
-                        Submitted
+            {search.data.type == "object" &&
+              search.plus_id !== "not_enabled" &&
+              search.end_time &&
+              search.label != "on_demand" && (
+                <Card className="p-1 text-sm md:p-2">
+                  <CardContent className="flex flex-col items-center justify-between gap-3 p-2 md:flex-row">
+                    <div className={cn("flex flex-col space-y-3")}>
+                      <div
+                        className={
+                          "text-lg font-semibold leading-none tracking-tight"
+                        }
+                      >
+                        Submit To Frigate+
                       </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                      <div className="text-sm text-muted-foreground">
+                        Objects in locations you want to avoid are not false
+                        positives. Submitting them as false positives will
+                        confuse the model.
+                      </div>
+                    </div>
+
+                    <div className="flex flex-row justify-center gap-2 md:justify-end">
+                      {state == "reviewing" && (
+                        <>
+                          <Button
+                            className="bg-success"
+                            aria-label="Confirm this label for Frigate Plus"
+                            onClick={() => {
+                              setState("uploading");
+                              onSubmitToPlus(false);
+                            }}
+                          >
+                            This is{" "}
+                            {/^[aeiou]/i.test(search?.label || "") ? "an" : "a"}{" "}
+                            {search?.label}
+                          </Button>
+                          <Button
+                            className="text-white"
+                            aria-label="Do not confirm this label for Frigate Plus"
+                            variant="destructive"
+                            onClick={() => {
+                              setState("uploading");
+                              onSubmitToPlus(true);
+                            }}
+                          >
+                            This is not{" "}
+                            {/^[aeiou]/i.test(search?.label || "") ? "an" : "a"}{" "}
+                            {search?.label}
+                          </Button>
+                        </>
+                      )}
+                      {state == "uploading" && <ActivityIndicator />}
+                      {state == "submitted" && (
+                        <div className="flex flex-row items-center justify-center gap-2">
+                          <FaCheckCircle className="text-success" />
+                          Submitted
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
           </div>
         </TransformWrapper>
       </div>
